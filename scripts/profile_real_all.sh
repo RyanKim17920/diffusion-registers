@@ -17,7 +17,7 @@ set -uo pipefail
 REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 export PYTHONPATH="$REPO/src"
-P="$REPO/.venv/bin/python $REPO/src/profile_real_models.py --n_seq 16 --batch 2 --seq_len 1024 --ptq"
+P="${REG_PYTHON:-python} $REPO/src/profile_real_models.py --n_seq 16 --batch 2 --seq_len 1024 --ptq"
 
 echo "### LINEAGE A: from-scratch bidirectional diffusion (closest to ours)"
 $P --model kuleshov-group/mdlm-owt                 --diffusion || echo "FAILED mdlm-owt"

@@ -14,8 +14,8 @@
 >
 > The one untested cell, if this is ever resumed: **carried registers on text**.
 > Sudoku tested carry but lacked the pathology and has trivially simple state;
-> text was only ever tested stateless. That cell is also where the concurrent
-> group (lbertge/d1-registers, ICLR 2027) is working at 8B.
+> text was only ever tested stateless. Note that concurrent work exists on
+> carried registers in diffusion LMs at 8B scale.
 
 ## What we are NOT claiming
 
@@ -26,9 +26,8 @@ Registers do not improve loss. Measured, not assumed:
   **worse** by +0.0061 nats
 - FLOP-matched (+2%): a dead heat, ~0.005 nats either way
 
-The paper says this plainly. The claim is about quantization, and a loss-neutral
-intervention that buys quantization robustness at +2% FLOPs is a clean story;
-pretending it also helps perplexity would be both false and unnecessary.
+The paper says this plainly. (The quantization claim this section was written
+to protect was itself falsified later — see the status header.)
 
 ## Thesis
 
@@ -41,15 +40,6 @@ that is worth the FLOPs.
 This is a claim only controlled training can make, so a ≤1B budget is the
 natural scope rather than a limitation.
 
-## Positioning
-
-| | covered by | our relation |
-| --- | --- | --- |
-| dLLMs have activation outliers | [2508.14896](https://arxiv.org/abs/2508.14896) (LLaDA, Dream-7B) | **cite, do not re-measure** |
-| PTQ repair methods for dLLMs | same, + [FAIR-Calib](https://arxiv.org/pdf/2606.06547) | baselines to beat / compose with |
-| registers as a carry channel for dLLM reasoning | `lbertge/d1-registers` (concurrent, ICLR 2027, LLaDA-8B) | **avoid this framing** |
-| registers as outlier prevention | — | **ours** |
-
 ## Status
 
 Done:
@@ -59,14 +49,14 @@ Done:
 - Necessity ≠ usefulness: `no_carry` → 0 accuracy on a model that is
   nevertheless indistinguishable from K=0. Methods contribution.
 - Text (51M, wikitext-103): registers halve the outlier fraction, cut max
-  token norm 40%, are attended 7–27× above baseline, and give 0.0086 nats
-  (n=3, provisional).
+  token norm 40%, are attended 7–27× above baseline, and gave 0.0086 nats at n=3, which was
+  later withdrawn (n=8: p~0.22).
 - Cost accounting: +6% wall clock, +2% FLOPs; the gap is 1040-token tiling.
 - Harnesses: `quant_eval.py` (W8A16→W4A4, SmoothQuant), `analyze_text.py`,
   `profile_real_models.py`.
 
-Running: n=8 seed confirmation, compute-matched control (K=0 @ 53k steps),
-scaling rungs at d=256/4L, 768/12L, 1024/16L on `L = d/64`.
+Stopped: the scaling rungs (d=256/4L, 768/12L, 1024/16L) were launched and
+cancelled mid-flight when the Phase-0 gate failed; they are not analysed.
 
 ## Phase 0 — the gate (do first, ~1 GPU-hr)
 
@@ -82,7 +72,7 @@ thesis is dead.
 - **Gate:** if the per-channel ratio does not drop measurably, stop and
   rewrite the paper around the Sudoku + necessity≠usefulness results instead.
 
-## Phase 1 — does it help PTQ? (~4 GPU-hr)
+## Phase 1 — does it help PTQ? — **NEVER RUN**
 
 `quant_eval.py` over the existing text runs, 8 seeds, W8A8 / W8A6 / W4A8 /
 W4A4. Report degradation (quantized − FP), paired by seed.
@@ -91,7 +81,7 @@ W4A4. Report degradation (quantized − FP), paired by seed.
 at all — see "What we are NOT claiming". The headline number of the paper is
 degradation(K=0) - degradation(K=16) at W4A4, paired by seed.
 
-## Phase 2 — against and with the repair baselines (~8 GPU-hr)
+## Phase 2 — against and with the repair baselines — **NEVER RUN**
 
 Four arms at W4A4: K=0, K=0 + SmoothQuant, K=16, K=16 + SmoothQuant.
 
@@ -99,7 +89,7 @@ Answers the two questions a reviewer will ask: does a training-time fix beat a
 post-training one, and do they compose? Add DuQuant-style rotation if Phase 2
 is promising — the literature reports it as the strongest repair method.
 
-## Phase 3 — scale (THE HEADLINE, ~30 GPU-hr, partly running)
+## Phase 3 — scale — **STARTED, CANCELLED, NOT ANALYSED**
 
 This is the paper's main figure, not a supporting result. Everything else
 establishes that the effect exists at one size; this decides whether it
@@ -149,8 +139,8 @@ filler.
   *prevention*, so a null would not falsify our thesis and a positive would
   reposition us into the repair camp SmoothQuant/DuQuant already own. The
   fine-tuning budget and data are also free parameters an adversarial reviewer
-  can attribute the effect to, and "add registers to a dLLM and fine-tune" is
-  the concurrent group's methodology.
+  can attribute the effect to, and "add registers to a dLLM and fine-tune" duplicates
+  the methodology of concurrent work.
 
   The objection it was meant to answer — "I cannot use this without
   pretraining" — is better answered directly: the cost is +2% FLOPs at

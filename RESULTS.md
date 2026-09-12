@@ -1,7 +1,7 @@
 # Do loss-free register tokens help a masked diffusion language model?
 
-Short answer, on synthetic Sudoku: **no**, under either of two register designs,
-across 40 training runs. The more interesting finding is *why* — and that one of
+Short answer: **no**, under either of two register designs, across 59 reported
+runs on synthetic Sudoku and wikitext-103. The more interesting finding is *why* — and that one of
 the two designs produces registers the model cannot function without, while still
 solving no more puzzles than a model that never had any.
 
@@ -170,15 +170,13 @@ perplexity result.
 Cost: wall clock +6.0%, analytic FLOPs +2.0% (linear +1.56%, attention +3.15%);
 the gap is implementation overhead, since 1024+16=1040 breaks tensor-core
 tiling. Spending +6% on more steps instead is worth ~0.011–0.019 nats at
-loss-compute exponents 0.04–0.07 — more than the registers buy. So
-wall-clock-matched they plausibly lose and FLOP-matched they win narrowly.
-A direct compute-matched control (K=0 at 53k steps vs K=16 at 50k) is running.
+loss-compute exponents 0.04–0.07 — more than the registers buy.
 
 **No instability to prevent.** Zero grad-norm spikes above 5x median in any of
 the 16 runs; K=16 is marginally smoother (mean grad norm 0.821 vs 0.885) but
-neither arm is near unstable. The likelier practical payoff is the 40% drop in
-max activation norm — activation outliers are the main obstacle to INT8/FP8
-quantization, and that effect dwarfs the perplexity change.
+neither arm is near unstable. At the time this suggested the payoff might be the 40% drop in max activation
+norm, since activation outliers obstruct INT8/FP8 quantization. Experiment 4
+shows that payoff does not materialise.
 
 
 ## Experiment 4 — the quantization thesis, and why it fails
@@ -192,8 +190,11 @@ move the per-channel statistics only slightly:
 | --- | --- | --- | --- |
 | channel max/median | -4.5% | -2.05 | 7/8 |
 | channel kurtosis | -7.3% | -2.91 | 6/8 |
-| channels >4x median | -12.4% | -0.53 | 4/8 |
-| channels >10x median | -26.7% | -0.72 | 4/8 |
+| channels >4x median | -12.4% | -0.53 | 4/8 (noise) |
+| channels >10x median | -26.7% | -0.72 | 4/8 (noise) |
+
+All t-values are paired, df=7. Only the first two rows clear |t|>2; the
+extreme-channel counts are indistinguishable from zero.
 
 The counts of extreme channels are noise. More importantly, the ABSOLUTE
 severity shows there is nothing to fix:
@@ -226,11 +227,12 @@ the scales we can afford reaches it.
 
 ## Limitations
 
-- **Scale.** The text result is a single model size (51.5M). A d=256 / d=768
-  ladder at fixed data is running to show whether the gap grows or shrinks; the
-  headline 0.0086 nats is too small to extrapolate from one point.
-- **The text CE win is provisional** at n=3 paired seeds, for exactly the reason
-  the Sudoku K=64 arm was: n=3 underestimates the paired sd.
+- **Scale.** The text result covers 51.5M params. A d=256/768/1024 ladder was
+  launched and stopped mid-flight when the Phase-0 gate failed; those rungs are
+  not analysed here and are excluded from the 59 reported runs.
+- **The quantization sweep was never run.** `src/quant_eval.py` implements
+  W4A4 + SmoothQuant, but the thesis died at the per-channel gate before it was
+  executed. No PTQ degradation number is claimed anywhere in this document.
 - **The hard-Sudoku control is weak.** Targeting clue counts [20,24] produced a
   set piled at the top of the range (24: 206831, 23: 78292, 22: 13956, 21: 906,
   20: 15 of 300k), because digs targeting 20–22 almost always fail the uniqueness

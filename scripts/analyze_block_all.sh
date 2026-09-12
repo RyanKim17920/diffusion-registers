@@ -9,7 +9,7 @@ for d in "$RUNS"/blk_k*_s*; do
   [ -f "$d/final.json" ] || { echo "skip $(basename $d) (unfinished)"; continue; }
   [ -f "$d/analysis_block.json" ] && { echo "skip $(basename $d) (done)"; continue; }
   echo "=== analysing $(basename "$d") ==="
-  "$REPO/.venv/bin/python" "$REPO/src/analyze_block.py" --run "$d" \
+  "${REG_PYTHON:-python}" "$REPO/src/analyze_block.py" --run "$d" \
     --n_solve "$N_SOLVE" || echo "ANALYSIS_FAILED $d"
 done
 echo BLOCK_ANALYZE_DONE

@@ -13,6 +13,6 @@ for s in 0 1 2 3 4 5 6 7; do
   done
 done
 echo "runs: $RUNS"
-"$REPO/.venv/bin/python" "$REPO/src/channel_outliers.py" --runs $RUNS \
+"${REG_PYTHON:-python}" "$REPO/src/channel_outliers.py" --runs $RUNS \
   --batches 8 --bs 8 --out ${REG_RUNS:-$REPO/runs}/channel_outliers_n8.json
 echo CHANNEL_OUTLIERS_ALL_DONE

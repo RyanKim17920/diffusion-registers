@@ -109,7 +109,7 @@ def register_stats(model, val, device, n=256):
     p = val["puzzles"][:n]
     # measure at the fully-masked state (the first denoising step)
     s = np.full((n, N_CELLS), MASK, dtype=np.int64)
-    from model import build_tokens  # local import: token assembly only
+    from model import build_tokens
     tok = build_tokens(
         torch.as_tensor(p, device=device, dtype=torch.long),
         torch.as_tensor(s, device=device, dtype=torch.long),

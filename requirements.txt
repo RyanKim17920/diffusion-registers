@@ -1,0 +1,11 @@
+# Core (training, evaluation, analysis)
+torch>=2.8
+numpy>=1.26
+matplotlib>=3.8       # curve plots in src/compare.py only
+
+# Optional: only for src/text_data.py (corpus tokenization) and
+# src/profile_real_models.py (profiling released checkpoints)
+datasets>=2.19
+transformers>=4.40
+tokenizers>=0.19
+sentencepiece>=0.2
