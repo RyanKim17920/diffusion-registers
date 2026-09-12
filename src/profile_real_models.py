@@ -151,6 +151,58 @@ def masked_ce(model, tok, texts, seq_len, mask_id, mask_frac, batch, device,
     return tot / max(n, 1)
 
 
+@torch.no_grad()
+def channel_stats(model, tok, texts, seq_len, mask_id, mask_frac, batch,
+                  device, diffusion):
+    """Per-input-channel absmax at every Linear, the axis per-tensor INT
+    quantization fails on. Same statistic as src/channel_outliers.py so our
+    models and released ones are directly comparable.
+
+    The point of running this on a released model: it separates "our models
+    are too SMALL to show massive outliers" from "our models are too
+    UNDERTRAINED to show them" -- mdlm-owt is comparable in size to our rungs
+    but trained on far more tokens.
+    """
+    obs, handles = {}, []
+
+    def mk(name):
+        def hook(mod, inp):
+            x = inp[0].detach()
+            c = x.abs().reshape(-1, x.shape[-1]).amax(0).float()
+            obs[name] = c if name not in obs else torch.maximum(obs[name], c)
+        return hook
+
+    for name, mod in model.named_modules():
+        if isinstance(mod, torch.nn.Linear) or type(mod).__name__ == "Conv1D":
+            if any(k in name.lower() for k in ("lm_head", "embed", "router")):
+                continue
+            handles.append(mod.register_forward_pre_hook(mk(name)))
+    if not handles:
+        raise RuntimeError("no projections hooked -- unrecognised module types")
+
+    for i in range(0, len(texts), batch):
+        enc = tok(texts[i:i + batch], return_tensors="pt", truncation=True,
+                  max_length=seq_len, padding="max_length")
+        ids = enc["input_ids"].to(device)
+        if diffusion:
+            m = torch.rand(ids.shape, device=device) < mask_frac
+            ids = torch.where(m, torch.full_like(ids, mask_id), ids)
+        model(input_ids=ids)
+    for h in handles:
+        h.remove()
+
+    out = {}
+    for name, a in obs.items():
+        v = a.cpu().numpy().astype(np.float64)
+        med = float(np.median(v))
+        out[name] = {
+            "max_over_median": float(v.max()) / max(med, 1e-12),
+            "n_over_10x_median": int((v > 10 * med).sum()),
+            "n_channels": int(v.size),
+        }
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
@@ -168,6 +220,9 @@ def main():
     ap.add_argument("--dtype", default="bfloat16")
     ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
     ap.add_argument("--out", default="/data/ryan.kim/registers_runs/real_models")
+    ap.add_argument("--channels", action="store_true",
+                    help="per-input-channel outlier stats (comparable to "
+                         "src/channel_outliers.py on our own runs)")
     ap.add_argument("--ptq", action="store_true",
                     help="also measure W8A8 / W8A6 PTQ degradation")
     args = ap.parse_args()
@@ -240,6 +295,18 @@ def main():
         print(f"{l:<6} {e['mean']:>8.1f} {e['max']:>9.1f} {e['p999']:>9.1f} "
               f"{e['outlier_frac']:>13.4f} {e['normalised_entropy']:>13.4f} "
               f"{e['frac_pos0']:>10.4f}")
+    if args.channels:
+        cs = channel_stats(model, tok, texts, args.seq_len, mask_id,
+                           args.mask_frac, args.batch, device, args.diffusion)
+        res["channels"] = cs
+        r = [v["max_over_median"] for v in cs.values()]
+        print(f"\n  PER-CHANNEL max/median: mean {np.mean(r):.2f}  "
+              f"median {np.median(r):.2f}  worst {np.max(r):.2f}  "
+              f"({len(cs)} projections)")
+        print(f"  projections with any channel >10x median: "
+              f"{sum(1 for v in cs.values() if v['n_over_10x_median'] > 0)}/{len(cs)}")
+        print("  (our from-scratch 51M runs: mean 4.13, worst 9.44)")
+
     if args.ptq:
         res["ptq"] = {}
         fp = masked_ce(model, tok, texts, args.seq_len, mask_id,
