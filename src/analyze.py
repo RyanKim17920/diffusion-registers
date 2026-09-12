@@ -62,6 +62,7 @@ def attention_stats(model, tokens, chunk=64):
     K = model.K
     if K == 0:
         return None
+    S = model.cfg.seq_len
     L = len(model.blocks)
     t2r = np.zeros(L)
     r2t = np.zeros(L)
@@ -75,17 +76,17 @@ def attention_stats(model, tokens, chunk=64):
         for l, a in enumerate(att):
             a = a.float()
             # queries = text rows [:SEQ_REAL], keys = register cols [-K:]
-            m = a[:, :, :SEQ_REAL, -K:].sum(-1)      # (B, H, SEQ_REAL)
+            m = a[:, :, :S, -K:].sum(-1)             # (B, H, S)
             t2r[l] += m.mean().item()
             t2r_head[l] += m.mean(dim=(0, 2)).cpu().numpy()
-            rr = a[:, :, -K:, :SEQ_REAL].sum(-1)     # (B, H, K)
+            rr = a[:, :, -K:, :S].sum(-1)            # (B, H, K)
             r2t[l] += rr.mean().item()
         nb += 1
     return {
         "text_to_register": (t2r / nb).tolist(),
         "register_to_text": (r2t / nb).tolist(),
         "text_to_register_per_head": (t2r_head / nb).tolist(),
-        "uniform_baseline": K / (SEQ_REAL + K),
+        "uniform_baseline": K / (S + K),
     }
 
 
@@ -99,6 +100,7 @@ def norm_stats(model, tokens, chunk=256, outlier_mult=3.0):
     smaller high-norm text tokens than the K=0 baseline. Computed for every
     model including K=0, which is the baseline the rest is compared against.
     """
+    S = model.cfg.seq_len
     acc = None
     nb = 0
     for i in range(0, tokens.shape[0], chunk):
@@ -107,7 +109,7 @@ def norm_stats(model, tokens, chunk=256, outlier_mult=3.0):
                "token_norm_p999": [], "token_outlier_frac": [],
                "token_norm_argmax_pos": []}
         for h in hs:
-            tn = h[:, :SEQ_REAL, :].float().norm(dim=-1)          # (B, SEQ_REAL)
+            tn = h[:, :S, :].float().norm(dim=-1)                 # (B, S)
             med = tn.median(dim=1, keepdim=True).values
             row["token_norm"].append(tn.mean().item())
             row["token_norm_max"].append(tn.max(dim=1).values.mean().item())
@@ -119,7 +121,7 @@ def norm_stats(model, tokens, chunk=256, outlier_mult=3.0):
             row["token_norm_argmax_pos"].append(
                 tn.argmax(dim=1).float().mean().item())
             row["register_norm"].append(
-                h[:, SEQ_REAL:, :].float().norm(dim=-1).mean().item()
+                h[:, S:, :].float().norm(dim=-1).mean().item()
                 if model.K else 0.0)
         if acc is None:
             acc = {k: np.array(v, dtype=float) for k, v in row.items()}

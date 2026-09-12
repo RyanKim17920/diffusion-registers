@@ -51,6 +51,14 @@ class ModelConfig:
     n_heads: int = 8
     d_ff: int = 1024
     dropout: float = 0.0
+    # Sequence shape. The defaults describe the Sudoku task, so model configs
+    # written before these fields existed still load unchanged.
+    vocab_size: int = VOCAB_SIZE
+    seq_len: int = SEQ_REAL
+    out_start: int = SOL_START     # first position the head is applied to
+    out_len: int = N_CELLS         # number of predicted positions
+    n_classes: int = N_DIGITS      # prediction classes at those positions
+    tie_head: bool = False         # tie the output head to the token embedding
 
     def save(self, path):
         with open(path, "w") as f:
@@ -107,8 +115,8 @@ class RegisterDiffusionTransformer(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.K = cfg.n_registers
-        self.tok_emb = nn.Embedding(VOCAB_SIZE, cfg.d_model)
-        self.pos_emb = nn.Parameter(torch.zeros(SEQ_REAL, cfg.d_model))
+        self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
+        self.pos_emb = nn.Parameter(torch.zeros(cfg.seq_len, cfg.d_model))
         # Register embeddings double as the registers' content and position
         # signal. Re-read every forward pass -> stateless across steps.
         if self.K > 0:
@@ -117,8 +125,12 @@ class RegisterDiffusionTransformer(nn.Module):
             self.register_parameter("reg_emb", None)
         self.blocks = nn.ModuleList([Block(cfg) for _ in range(cfg.n_layers)])
         self.ln_f = nn.LayerNorm(cfg.d_model)
-        self.head = nn.Linear(cfg.d_model, N_DIGITS)
+        self.head = nn.Linear(cfg.d_model, cfg.n_classes, bias=not cfg.tie_head)
         self.apply(self._init)
+        if cfg.tie_head:
+            assert cfg.n_classes == cfg.vocab_size, \
+                "tie_head needs the head to span the vocabulary"
+            self.head.weight = self.tok_emb.weight
         nn.init.normal_(self.pos_emb, std=0.02)
         if self.K > 0:
             nn.init.normal_(self.reg_emb, std=0.02)
@@ -159,14 +171,16 @@ class RegisterDiffusionTransformer(nn.Module):
             return self.reg_emb[idx]
         raise ValueError(f"unknown reg_mode {reg_mode!r}")
 
-    def forward(self, tokens, reg_mode="normal", collect_attn=False, generator=None):
+    def forward(self, tokens, reg_mode="normal", collect_attn=False,
+                generator=None, return_hidden=False):
         """tokens: (B, 163) long. Returns logits (B, 81, 9) for solution cells.
 
         If collect_attn, also returns the per-layer attention weights
         (list of (B, n_heads, T, T)).
         """
         B, T = tokens.shape
-        assert T == SEQ_REAL, f"expected {SEQ_REAL} tokens, got {T}"
+        assert T == self.cfg.seq_len, \
+            f"expected {self.cfg.seq_len} tokens, got {T}"
         x = self.tok_emb(tokens) + self.pos_emb.unsqueeze(0)
         reg = self._registers(B, tokens.device, reg_mode, generator)
         if reg is not None:
@@ -175,10 +189,16 @@ class RegisterDiffusionTransformer(nn.Module):
         for blk in self.blocks:
             x = blk(x, collect=collect)
         h = self.ln_f(x)
-        logits = self.head(h[:, SOL_START:SOL_START + N_CELLS, :])
+        c = self.cfg
+        out = h[:, c.out_start:c.out_start + c.out_len, :]
+        # return_hidden lets the caller apply the head to a gathered subset of
+        # positions; at a 50k vocabulary, materialising logits everywhere is
+        # what blows up memory, not the batch size.
+        if not return_hidden:
+            out = self.head(out)
         if collect_attn:
-            return logits, collect
-        return logits
+            return out, collect
+        return out
 
     @torch.no_grad()
     def hidden_states(self, tokens, reg_mode="normal"):
