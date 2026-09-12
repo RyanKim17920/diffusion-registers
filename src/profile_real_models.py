@@ -246,12 +246,20 @@ def main():
         tok = AutoTokenizer.from_pretrained("gpt2")
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token or tok.unk_token
-    try:
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model, torch_dtype=dtype, trust_remote_code=True).to(device)
-    except Exception:
-        model = AutoModel.from_pretrained(
-            args.model, torch_dtype=dtype, trust_remote_code=True).to(device)
+    # Checkpoints with custom configs are not registered for every AutoModel
+    # class, so try the plausible ones in order rather than assuming one.
+    from transformers import AutoModelForMaskedLM
+    model, last = None, None
+    for cls in (AutoModelForCausalLM, AutoModelForMaskedLM, AutoModel):
+        try:
+            model = cls.from_pretrained(args.model, dtype=dtype,
+                                        trust_remote_code=True).to(device)
+            print(f"loaded with {cls.__name__}")
+            break
+        except Exception as e:
+            last = e
+    if model is None:
+        raise RuntimeError(f"could not load {args.model}: {type(last).__name__}: {last}")
     model.eval()
 
     # same text for every model: the wikitext-103 validation stream
