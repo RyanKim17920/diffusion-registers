@@ -1,5 +1,22 @@
 # Plan
 
+> **STATUS: STOPPED 2026-09-12.** The quantization thesis is falsified — not by
+> a failed intervention, but by the absence of the phenomenon it targets. Our
+> models' channel max/median is ~4.2x; the regime that breaks low-bit
+> quantization is 100–1000x. Registers reduce that ratio ~4.5% (replicated
+> across three independent runs), which cannot matter at 4x. Even a
+> well-trained 124M positive control (GPT-2, 8.75x) sits an order of magnitude
+> below the needed regime, so no affordable scale reaches it.
+>
+> What survives is in RESULTS.md: the predictive criterion (K=0 outlier
+> severity tells you whether registers can help — correct on two settings), the
+> necessity≠usefulness result, and a compute-matched negative on loss.
+>
+> The one untested cell, if this is ever resumed: **carried registers on text**.
+> Sudoku tested carry but lacked the pathology and has trivially simple state;
+> text was only ever tested stateless. That cell is also where the concurrent
+> group (lbertge/d1-registers, ICLR 2027) is working at 8B.
+
 ## What we are NOT claiming
 
 Registers do not improve loss. Measured, not assumed:
