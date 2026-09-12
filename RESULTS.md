@@ -180,6 +180,50 @@ neither arm is near unstable. The likelier practical payoff is the 40% drop in
 max activation norm — activation outliers are the main obstacle to INT8/FP8
 quantization, and that effect dwarfs the perplexity change.
 
+
+## Experiment 4 — the quantization thesis, and why it fails
+
+Registers cut the per-TOKEN max hidden-state norm ~40%. Per-tensor activation
+quantization, however, fails on per-CHANNEL outliers. Measured across 8 seeds
+(and replicated independently on 3 seeds with different sampling), registers
+move the per-channel statistics only slightly:
+
+| statistic | change | t | seeds favouring K=16 |
+| --- | --- | --- | --- |
+| channel max/median | -4.5% | -2.05 | 7/8 |
+| channel kurtosis | -7.3% | -2.91 | 6/8 |
+| channels >4x median | -12.4% | -0.53 | 4/8 |
+| channels >10x median | -26.7% | -0.72 | 4/8 |
+
+The counts of extreme channels are noise. More importantly, the ABSOLUTE
+severity shows there is nothing to fix:
+
+| model | params | channel max/median (mean) | worst |
+| --- | --- | --- | --- |
+| ours, from-scratch dLLM | 51M | **4.13** | 9.4 |
+| gpt2 | 124M | 8.75 | 48.9 |
+| gpt2-medium | 355M | 7.04 | 52.5 |
+| published 8B LLMs ("massive outliers") | 8B | **100-1000x** | — |
+
+A 4x dynamic range quantizes cleanly at 4 bits, so a 4.5% reduction on it
+cannot produce a W4A4 benefit. Our models simply do not have the pathology —
+the same failure as Sudoku, one level up, and the same K=0-baseline reasoning
+that explained the Sudoku null should have predicted it.
+
+Why we lack it is not fully resolved. A well-trained 124M AR model has ~2x our
+mean ratio and 5x our worst, so part of the gap is our token budget (1.6B
+tokens vs GPT-2's ~10B). But GPT-2 is autoregressive and carries a position-0
+attention sink, a known source of massive activations, which our bidirectional
+model provably lacks (mass at position 0 measured as exactly 0.0000 at every
+layer). The measurement that would separate these — a well-trained
+diffusion-objective model — could not be run: mdlm-owt's custom config is not
+registered for any AutoModel class, and Qwen3-0.6B-diffusion requires a
+GitHub-only `dllm` package.
+
+It does not change the conclusion. Even the positive control sits an order of
+magnitude below the regime the thesis needs, so neither longer training nor
+the scales we can afford reaches it.
+
 ## Limitations
 
 - **Scale.** The text result is a single model size (51.5M). A d=256 / d=768
