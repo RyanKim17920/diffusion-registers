@@ -74,7 +74,7 @@ def sample_windows(stream, n, seq_len, rng):
     return stream[idx].astype(np.int64)
 
 
-def make_batch(stream, n, seq_len, mask_id, data_rng, mask_rng):
+def make_batch(stream, n, seq_len, data_rng, mask_rng):
     """Absorbing-state corruption: t ~ U(0,1], mask each position with prob t,
     always at least one masked position."""
     x = sample_windows(stream, n, seq_len, data_rng)
@@ -87,7 +87,7 @@ def make_batch(stream, n, seq_len, mask_id, data_rng, mask_rng):
     return x, m, t
 
 
-def loss_on_batch(model, x, m, t, device, head_chunk=8192):
+def loss_on_batch(model, x, m, device, head_chunk=8192):
     """Cross-entropy at masked positions only.
 
     The head is applied to the GATHERED masked positions rather than to every
@@ -107,12 +107,7 @@ def loss_on_batch(model, x, m, t, device, head_chunk=8192):
         lg = model.head(hsel[i:i + head_chunk].float())
         part = F.cross_entropy(lg, tgt[i:i + head_chunk], reduction="sum")
         ce_sum = part if ce_sum is None else ce_sum + part
-    mean_ce = ce_sum / max(n, 1)
-    # MDLM ELBO weighting, reported for reference only
-    with torch.no_grad():
-        per_ex = mb.float().sum(1) / mb.shape[1]
-        elbo = (mean_ce.detach() * per_ex / torch.as_tensor(t, device=device)).mean()
-    return mean_ce, elbo, n
+    return ce_sum / max(n, 1), n
 
 
 def mask_id_of(model):
@@ -126,9 +121,9 @@ def val_loss(model, val_stream, args, device):
     rng = np.random.default_rng(VAL_EVAL_SEED)
     tot, ntok = 0.0, 0
     for _ in range(args.val_batches):
-        x, m, t = make_batch(val_stream, args.bs, args.seq_len, None, rng, rng)
+        x, m, _ = make_batch(val_stream, args.bs, args.seq_len, rng, rng)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            ce, _, n = loss_on_batch(model, x, m, t, device)
+            ce, n = loss_on_batch(model, x, m, device)
         tot += ce.item() * n
         ntok += n
     model.train()
@@ -189,10 +184,10 @@ def main():
     for step in range(args.steps):
         for g in opt.param_groups:
             g["lr"] = lr_at(step, args)
-        x, m, t = make_batch(train_stream, args.bs, args.seq_len, None,
+        x, m, _ = make_batch(train_stream, args.bs, args.seq_len,
                              data_rng, mask_rng)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            ce, elbo, _ = loss_on_batch(model, x, m, t, device)
+            ce, _ = loss_on_batch(model, x, m, device)
         opt.zero_grad(set_to_none=True)
         ce.backward()
         gn = torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
@@ -202,8 +197,7 @@ def main():
 
         if (step + 1) % 100 == 0:
             log({"step": step + 1, "split": "train", "ce": run_loss / run_n,
-                 "elbo": float(elbo), "lr": lr_at(step, args),
-                 "grad_norm": float(gn)})
+                 "lr": lr_at(step, args), "grad_norm": float(gn)})
             run_loss, run_n = 0.0, 0
 
         if (step + 1) % args.eval_every == 0 or step + 1 == args.steps:
