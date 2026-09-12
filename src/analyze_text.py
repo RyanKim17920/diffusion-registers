@@ -15,6 +15,8 @@ import argparse
 import json
 import os
 
+import math
+
 import numpy as np
 import torch
 
@@ -66,6 +68,45 @@ def fixed_tokens(model, stream, seq_len, n, mask_frac, device, seed=0):
     return torch.where(m, torch.full_like(xb, mask_id_of(model)), xb)
 
 
+@torch.no_grad()
+def sink_position_stats(model, tokens, chunk=16):
+    """Where do the high-norm tokens actually sit?
+
+    The autoregressive attention-sink story is positional: with causal masking
+    position 0 is visible to every query and is elected as the sink. A masked
+    diffusion LM is bidirectional, so no position is privileged and the fix
+    "keep token 0" would have nothing to keep. This measures whether the
+    outliers are positional or content-dependent: the argmax-norm position
+    distribution, its normalised entropy (1.0 = uniform = no positional
+    preference), and the mass on the first few positions.
+    """
+    S = model.cfg.seq_len
+    counts = torch.zeros(S)
+    per_layer = {}
+    for i in range(0, tokens.shape[0], chunk):
+        hs = model.hidden_states(tokens[i:i + chunk])
+        for l, h in enumerate(hs):
+            am = h[:, :S, :].float().norm(dim=-1).argmax(dim=1).cpu()
+            per_layer.setdefault(l, []).append(am)
+    out = {}
+    for l, chunks in per_layer.items():
+        am = torch.cat(chunks)
+        c = torch.bincount(am, minlength=S).float()
+        p = c / c.sum()
+        nz = p[p > 0]
+        ent = float(-(nz * nz.log()).sum() / math.log(S))
+        top = torch.topk(c, 5)
+        out[l] = {
+            "normalised_entropy": ent,
+            "frac_pos0": float(p[0]),
+            "frac_first4": float(p[:4].sum()),
+            "frac_last4": float(p[-4:].sum()),
+            "top5_positions": [int(x) for x in top.indices],
+            "top5_frac": [float(x) for x in top.values / c.sum()],
+        }
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
@@ -93,6 +134,8 @@ def main():
     if a:
         res["attention"] = a
 
+    res["sink_positions"] = sink_position_stats(model, tokens)
+
     res["ablations"] = {}
     modes = ["normal"] if cfg.n_registers == 0 else ["normal", "zero", "shuffle"]
     for mode in modes:
@@ -114,6 +157,13 @@ def main():
         print(f"    {l:<6} {n['token_norm'][l]:>9.2f} {n['token_norm_max'][l]:>9.2f} "
               f"{n['token_norm_p999'][l]:>7.1f} {n['token_outlier_frac'][l]:>14.4f} "
               f"{n['token_norm_argmax_pos'][l]:>12.1f}")
+    sp = res["sink_positions"]
+    print("  high-norm token POSITION (entropy 1.0 = uniform = not a positional sink):")
+    print("    layer   norm_entropy   frac_pos0   frac_first4   frac_last4   top positions")
+    for l in sorted(sp):
+        e = sp[l]
+        print(f"    {l:<6} {e['normalised_entropy']:>12.4f} {e['frac_pos0']:>11.4f} "
+              f"{e['frac_first4']:>13.4f} {e['frac_last4']:>12.4f}   {e['top5_positions']}")
     if a:
         print(f"  text->register attention (uniform baseline "
               f"{a['uniform_baseline']:.4f}):")
