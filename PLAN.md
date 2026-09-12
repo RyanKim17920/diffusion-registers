@@ -67,25 +67,45 @@ Answers the two questions a reviewer will ask: does a training-time fix beat a
 post-training one, and do they compose? Add DuQuant-style rotation if Phase 2
 is promising — the literature reports it as the strongest repair method.
 
-## Phase 3 — scale (~30 GPU-hr, partly running)
+## Phase 3 — scale (THE HEADLINE, ~30 GPU-hr, partly running)
+
+This is the paper's main figure, not a supporting result. Everything else
+establishes that the effect exists at one size; this decides whether it
+matters.
 
 Ladder on `L = d/64`: 7M / 51M / 115M / 300M, K ∈ {0,16}, 3 seeds, fixed data
-and steps. Report outlier reduction and W4A4 degradation per scale.
+and steps. Per rung, plot against model size:
 
-**The question is the trend, not the level:** does the outlier gap widen with
-scale? Three points show direction only; 4 points with 3 seeds is the minimum
-for a claim, and the effect must exceed seed noise at each rung.
+1. per-channel max/median ratio, K=0 vs K=16   <- the mechanism
+2. W4A4 PTQ degradation, K=0 vs K=16           <- the payoff
+3. val CE gap, FLOP-matched                    <- the cost side
+
+**The question is the trend, not the level.** Three outcomes and what each
+means:
+
+- *gap widens with scale* — the result. Outliers are known to worsen with
+  scale, so a fix that scales with them is worth pretraining-time adoption.
+- *gap flat* — weak but publishable as a constant-factor improvement, if it
+  clears seed noise at every rung.
+- *gap narrows* — the effect is a small-model artifact. Say so and stop; this
+  is the most likely way the project dies, and it should be reported rather
+  than hidden behind the 51M point.
+
+Four points with 3 seeds is the minimum for any trend claim, and the effect
+must exceed seed noise at each rung. If the trend is ambiguous, add seeds at
+the two end rungs before adding a fifth rung — the ends carry the slope.
 
 ## Phase 4 — write-up
 
-Sudoku negative → criterion → text positive → scale → retrofit. The negative
+Sudoku negative → criterion → text positive → **scale trend**. The negative
 results are the control that makes the positive interpretable; they are not
 filler.
 
 ## Out of scope (and why)
 
-- **8B training.** Not affordable; not needed — the intervention claim lives
-  in controlled training, and Phase 4 covers pretrained models.
+- **8B training.** Not affordable, and not needed: the intervention claim
+  lives in controlled training, and the scale question is answered by the
+  trend across the ladder rather than by any single large point.
 - **Re-profiling released dLLMs for outliers.** Published already.
 - **Carried registers / reasoning.** Concurrent group is there at 8B.
 - **Hard Sudoku.** The generator cannot reach low clue counts (0/80 at
