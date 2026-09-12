@@ -230,6 +230,20 @@ the scales we can afford reaches it.
 - **Scale.** The text result covers 51.5M params. A d=256/768/1024 ladder was
   launched and stopped mid-flight when the Phase-0 gate failed; those rungs are
   not analysed here and are excluded from the 59 reported runs.
+- **The carried-register unroll is teacher-forced, so it never trains the
+  behaviour inference needs.** In training the j-th cell of a block is revealed
+  as GROUND TRUTH in a random order (`blockdiff.py`: `gather(truth, reveal)`);
+  at decode time it is revealed as the model's OWN argmax in confidence order
+  (`gather(digit, pick)`). Under teacher forcing every revealed cell is correct,
+  so a register that would track "this commit was risky" or "I am unsure about
+  cell 12" receives no training signal — there are no wrong commits in training
+  to track — while at inference the model conditions on its own errors and the
+  carried state is off-distribution precisely when it would matter most.
+
+  The honest reading of Experiment 2 is therefore **"carried registers trained
+  with teacher forcing do not help"**, not "carried registers do not help".
+  Scheduled sampling in the unroll (revealing the model's own argmax some
+  fraction of the time) is the obvious fix and was never tried.
 - **No text decoder was ever run.** The text experiments measure only the
   one-jump denoising objective: mask a random subset, predict, single forward
   pass. No iterative denoising, no generation, no sampler. So the text result
