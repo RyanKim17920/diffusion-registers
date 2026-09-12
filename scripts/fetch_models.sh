@@ -3,7 +3,7 @@
 set -uo pipefail
 export HF_HOME=/data/huggingface
 REPO=/admin/home/ryan.kim/registers
-for m in kuleshov-group/mdlm-owt GSAI-ML/LLaDA-8B-Base Qwen/Qwen2.5-7B Dream-org/Dream-v0-Base-7B; do
+for m in inclusionAI/LLaDA2.0-mini inclusionAI/LLaDA2.1-mini dllm-hub/Qwen3-0.6B-diffusion-mdlm-v0.1 Efficient-Large-Model/Fast_dLLM_v2_1.5B Qwen/Qwen2.5-7B; do
   echo "=== fetching $m ==="
   "$REPO/.venv/bin/python" -c "
 from huggingface_hub import snapshot_download
