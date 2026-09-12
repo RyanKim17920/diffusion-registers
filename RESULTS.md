@@ -159,6 +159,14 @@ nats, more than registers ever delivered — so the thesis does not rest on it.
 What the thesis rests on is outlier reduction, which is a ~30x larger effect,
 and which must now face the same n=8 test before it is claimed.
 
+**Compute-matched, registers lose.** K=16 at 50k steps against K=0 given the
+same +6% wall clock as extra steps (53k): **+0.0061 nats, i.e. worse**, 2 of 3
+seeds. The control validates itself -- those extra 6% of steps bought -0.0146
+nats at K=0, inside the -0.011 to -0.019 predicted from loss-compute exponents.
+FLOP-matched (+2%) the two are a dead heat: ~0.005 nats either way. n=3, so the
+sign is indicative rather than settled, but it agrees with the withdrawn
+perplexity result.
+
 Cost: wall clock +6.0%, analytic FLOPs +2.0% (linear +1.56%, attention +3.15%);
 the gap is implementation overhead, since 1024+16=1040 breaks tensor-core
 tiling. Spending +6% on more steps instead is worth ~0.011–0.019 nats at
