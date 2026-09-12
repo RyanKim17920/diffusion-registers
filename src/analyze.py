@@ -90,21 +90,47 @@ def attention_stats(model, tokens, chunk=64):
 
 
 @torch.no_grad()
-def norm_stats(model, tokens, chunk=256):
-    """Per-layer mean L2 norm of register vs text hidden states."""
-    reg, tok = None, None
+def norm_stats(model, tokens, chunk=256, outlier_mult=3.0):
+    """Per-layer norm profile of register vs text hidden states.
+
+    Beyond the means, this reports the TEXT-token outlier statistics that the
+    register hypothesis actually predicts: if registers work by giving
+    high-norm artifacts somewhere to go, then a K>0 model should show fewer /
+    smaller high-norm text tokens than the K=0 baseline. Computed for every
+    model including K=0, which is the baseline the rest is compared against.
+    """
+    acc = None
     nb = 0
     for i in range(0, tokens.shape[0], chunk):
         hs = model.hidden_states(tokens[i:i + chunk])
-        r = [h[:, SEQ_REAL:, :].float().norm(dim=-1).mean().item() if model.K else 0.0
-             for h in hs]
-        t = [h[:, :SEQ_REAL, :].float().norm(dim=-1).mean().item() for h in hs]
-        reg = np.array(r) if reg is None else reg + np.array(r)
-        tok = np.array(t) if tok is None else tok + np.array(t)
+        row = {"register_norm": [], "token_norm": [], "token_norm_max": [],
+               "token_norm_p999": [], "token_outlier_frac": [],
+               "token_norm_argmax_pos": []}
+        for h in hs:
+            tn = h[:, :SEQ_REAL, :].float().norm(dim=-1)          # (B, SEQ_REAL)
+            med = tn.median(dim=1, keepdim=True).values
+            row["token_norm"].append(tn.mean().item())
+            row["token_norm_max"].append(tn.max(dim=1).values.mean().item())
+            row["token_norm_p999"].append(
+                tn.flatten().quantile(0.999).item())
+            row["token_outlier_frac"].append(
+                (tn > outlier_mult * med).float().mean().item())
+            # which sequence position most often carries the largest norm
+            row["token_norm_argmax_pos"].append(
+                tn.argmax(dim=1).float().mean().item())
+            row["register_norm"].append(
+                h[:, SEQ_REAL:, :].float().norm(dim=-1).mean().item()
+                if model.K else 0.0)
+        if acc is None:
+            acc = {k: np.array(v, dtype=float) for k, v in row.items()}
+        else:
+            for k, v in row.items():
+                acc[k] += np.array(v, dtype=float)
         nb += 1
-    return {"register_norm": (reg / nb).tolist(),
-            "token_norm": (tok / nb).tolist(),
-            "layers": "index 0 is the embedding output, then one per block"}
+    out = {k: (v / nb).tolist() for k, v in acc.items()}
+    out["outlier_mult"] = outlier_mult
+    out["layers"] = "index 0 is the embedding output, then one per block"
+    return out
 
 
 def main():

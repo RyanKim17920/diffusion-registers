@@ -78,19 +78,33 @@ def main():
         print("   ignoring the registers)")
 
     print("\n=== 3. Activation norms (state = all_masked, mean L2 by layer) ===")
+    print("  K=0 is included: it is the baseline the register models are judged")
+    print("  against. The register hypothesis predicts that adding registers")
+    print("  DRAINS high-norm artifacts out of the text tokens, so K>0 should")
+    print("  show lower token_max / outlier_frac than K=0.")
+    keys = [("register_norm", "reg ", "{:>7.1f}"),
+            ("token_norm", "tok ", "{:>7.1f}"),
+            ("token_norm_max", "tmax", "{:>7.1f}"),
+            ("token_outlier_frac", "out%", "{:>7.4f}")]
     for k in sorted(by_k):
         rs = [r for r in by_k[k] if "all_masked" in r.get("states", {})]
         if not rs:
             continue
         nrm = rs[0]["states"]["all_masked"]["norms"]
-        nl = len(nrm["register_norm"])
-        reg = [ms([r["states"]["all_masked"]["norms"]["register_norm"][l]
-                   for r in rs])[0] for l in range(nl)]
-        tok = [ms([r["states"]["all_masked"]["norms"]["token_norm"][l]
-                   for r in rs])[0] for l in range(nl)]
-        print(f"  K={k:<3} reg  " + "  ".join(f"{v:>7.1f}" for v in reg))
-        print(f"  {'':<5} tok  " + "  ".join(f"{v:>7.1f}" for v in tok))
-        print(f"  {'':<5} ratio" + "  ".join(f"{r / t:>7.2f}" for r, t in zip(reg, tok)))
+        nl = len(nrm["token_norm"])
+        print(f"  K={k}")
+        vals = {}
+        for key, lbl, fmtstr in keys:
+            if key not in nrm:
+                continue
+            v = [ms([r["states"]["all_masked"]["norms"][key][l]
+                     for r in rs])[0] for l in range(nl)]
+            vals[key] = v
+            print(f"    {lbl}  " + "  ".join(fmtstr.format(x) for x in v))
+        if "register_norm" in vals and k:
+            print("    ratio " + "  ".join(
+                f"{r / t:>7.2f}" for r, t in zip(vals["register_norm"],
+                                                 vals["token_norm"])))
 
     print("\n=== 4. Ablation effect on hard puzzles (<=27 clues) ===")
     print(f"{'K':>4}  {'normal':>17}  {'zero':>17}")
