@@ -69,7 +69,7 @@ def fixed_tokens(model, stream, seq_len, n, mask_frac, device, seed=0):
 
 
 @torch.no_grad()
-def sink_position_stats(model, tokens, chunk=16):
+def sink_position_stats(model, tokens, chunk=16, outlier_mult=3.0):
     """Where do the high-norm tokens actually sit?
 
     The autoregressive attention-sink story is positional: with causal masking
@@ -81,22 +81,34 @@ def sink_position_stats(model, tokens, chunk=16):
     preference), and the mass on the first few positions.
     """
     S = model.cfg.seq_len
-    counts = torch.zeros(S)
     per_layer = {}
-    for i in range(0, tokens.shape[0], chunk):
+    n_seq = tokens.shape[0]
+    for i in range(0, n_seq, chunk):
         hs = model.hidden_states(tokens[i:i + chunk])
         for l, h in enumerate(hs):
-            am = h[:, :S, :].float().norm(dim=-1).argmax(dim=1).cpu()
-            per_layer.setdefault(l, []).append(am)
+            nrm = h[:, :S, :].float().norm(dim=-1)
+            med = nrm.median(dim=1, keepdim=True).values
+            # EVERY outlier token, not one argmax per sequence. With one
+            # argmax per sequence the entropy is capped at log(n_seq)/log(S)
+            # -- 0.600 for 64 sequences over 1024 positions -- so a maximally
+            # spread distribution is indistinguishable from a concentrated one.
+            pos = (nrm > outlier_mult * med).nonzero()[:, 1].cpu()
+            per_layer.setdefault(l, []).append(pos)
     out = {}
     for l, chunks in per_layer.items():
         am = torch.cat(chunks)
+        if am.numel() == 0:
+            out[l] = {"n_outliers": 0}
+            continue
         c = torch.bincount(am, minlength=S).float()
         p = c / c.sum()
         nz = p[p > 0]
         ent = float(-(nz * nz.log()).sum() / math.log(S))
         top = torch.topk(c, 5)
         out[l] = {
+            "n_outliers": int(am.numel()),
+            "entropy_ceiling": float(
+                math.log(min(am.numel(), S)) / math.log(S)),
             "normalised_entropy": ent,
             "frac_pos0": float(p[0]),
             "frac_first4": float(p[:4].sum()),
@@ -159,11 +171,17 @@ def main():
               f"{n['token_norm_argmax_pos'][l]:>12.1f}")
     sp = res["sink_positions"]
     print("  high-norm token POSITION (entropy 1.0 = uniform = not a positional sink):")
-    print("    layer   norm_entropy   frac_pos0   frac_first4   frac_last4   top positions")
+    print("    layer  n_out  entropy  ceiling   frac_pos0  frac_first4  frac_last4")
     for l in sorted(sp):
         e = sp[l]
-        print(f"    {l:<6} {e['normalised_entropy']:>12.4f} {e['frac_pos0']:>11.4f} "
-              f"{e['frac_first4']:>13.4f} {e['frac_last4']:>12.4f}   {e['top5_positions']}")
+        if not e.get("n_outliers"):
+            print(f"    {l:<6} {0:>6}   (no outlier tokens at this layer)")
+            continue
+        print(f"    {l:<6} {e['n_outliers']:>6} {e['normalised_entropy']:>8.4f} "
+              f"{e['entropy_ceiling']:>8.4f} {e['frac_pos0']:>11.4f} "
+              f"{e['frac_first4']:>12.4f} {e['frac_last4']:>11.4f}")
+    print("    (entropy must be read against its ceiling: with n samples over S")
+    print("     positions the maximum attainable is log(n)/log(S))")
     if a:
         print(f"  text->register attention (uniform baseline "
               f"{a['uniform_baseline']:.4f}):")
