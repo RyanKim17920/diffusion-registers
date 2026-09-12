@@ -143,10 +143,21 @@ a .0154 uniform baseline (7–27x above chance), and the registers are not
 themselves high-norm (~1.1x token norm). `shuffle` is still an exact no-op, so
 it remains a permutation-invariant bag of state.
 
-**The perplexity win is small and may not survive compute matching.** Paired
-over 3 seeds, K=16 beats K=0 by 0.0086 nats (ppl 101.41 -> 100.22, ~1.2%),
-3/3 seeds, t=-4.76 df=2 — pending n=8 confirmation, since the Sudoku K=64 arm
-looked this good at n=3 and dissolved.
+**The perplexity win did NOT survive more seeds.** At 3 seeds it was -0.0086
+nats (3/3 seeds, t=-4.76, df=2). At 8 seeds it is **-0.0049 nats, t=-1.24,
+df=7, p~0.22** — not significant. The paired sd tripled (0.0031 -> 0.0112) and
+seed 7 flipped sign (+0.0204); 7/8 still favour registers (sign test p~0.07),
+which is suggestive and nothing more.
+
+This is the second time the same failure mode appeared: the Sudoku K=64 arm
+also looked significant at n=3 (t=3.16) and dissolved at n=8. Treat no n=3
+result in this project as real.
+
+The perplexity claim is therefore withdrawn. It had already been demoted on
+cost grounds — +6% wall clock spent on extra training steps buys ~0.011-0.019
+nats, more than registers ever delivered — so the thesis does not rest on it.
+What the thesis rests on is outlier reduction, which is a ~30x larger effect,
+and which must now face the same n=8 test before it is claimed.
 
 Cost: wall clock +6.0%, analytic FLOPs +2.0% (linear +1.56%, attention +3.15%);
 the gap is implementation overhead, since 1024+16=1040 breaks tensor-core
