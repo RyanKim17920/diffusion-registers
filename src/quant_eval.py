@@ -60,6 +60,8 @@ class QuantLinear(nn.Module):
         self.calibrating = False
         self._obs = []
         self._wq = None
+        self.act_div = None        # SmoothQuant per-channel divisor
+        self.chan_absmax = None    # per-input-channel absmax, for SmoothQuant
 
     def _quant_weight(self):
         if self._wq is not None:
@@ -75,8 +77,13 @@ class QuantLinear(nn.Module):
         return self._wq
 
     def forward(self, x):
+        if self.act_div is not None:
+            x = x / self.act_div
         if self.calibrating:
             with torch.no_grad():
+                c = x.detach().abs().reshape(-1, x.shape[-1]).amax(0)
+                self.chan_absmax = c if self.chan_absmax is None else \
+                    torch.maximum(self.chan_absmax, c)
                 if self.a_percentile >= 100.0:
                     v = x.abs().max()
                 else:
@@ -95,6 +102,25 @@ class QuantLinear(nn.Module):
         if self._obs:
             self.a_scale.fill_(float(np.mean(self._obs)))
         self._obs = []
+
+
+@torch.no_grad()
+def apply_smoothquant(model, acts, alpha):
+    """Per-channel activation->weight magnitude migration (SmoothQuant).
+
+    `acts` maps each wrapped module to the per-input-channel absmax observed
+    during calibration. Dividing the activation by s and multiplying the
+    weight column by s leaves the product unchanged in full precision, but
+    moves outlier magnitude from the activation (per-tensor quantized, and
+    therefore fragile) into the weights (per-channel quantized, and robust).
+    """
+    for q, a_absmax in acts.items():
+        w_absmax = q.lin.weight.abs().amax(dim=0).clamp(min=1e-5)
+        s = (a_absmax.clamp(min=1e-5) ** alpha) / (w_absmax ** (1 - alpha))
+        s = s.clamp(min=1e-5)
+        q.lin.weight.mul_(s.unsqueeze(0))
+        q.act_div = s
+        q._wq = None
 
 
 def wrap_model(model, w_bits, a_bits, a_percentile):
@@ -136,12 +162,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
     ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
-    ap.add_argument("--w_bits", type=int, nargs="*", default=[8, 8, 8])
-    ap.add_argument("--a_bits", type=int, nargs="*", default=[16, 8, 6])
+    # W8A8 is too easy to separate anything: the dLLM PTQ literature
+    # (arXiv 2508.14896) reports that dLLMs break at W4A4, where SmoothQuant
+    # falls to near-zero. The interesting operating points are the low-bit
+    # ACTIVATION ones, since activations are what outliers corrupt.
+    ap.add_argument("--w_bits", type=int, nargs="*",
+                    default=[8, 8, 8, 4, 4])
+    ap.add_argument("--a_bits", type=int, nargs="*",
+                    default=[16, 8, 6, 8, 4])
     ap.add_argument("--a_percentile", type=float, default=100.0)
     ap.add_argument("--calib_batches", type=int, default=8)
     ap.add_argument("--val_batches", type=int, default=16)
     ap.add_argument("--bs", type=int, default=8)
+    ap.add_argument("--smooth", type=float, default=0.0,
+                    help="SmoothQuant-style migration strength alpha in [0,1): "
+                         "scale activations down and weights up by "
+                         "s = max|X|^alpha / max|W|^(1-alpha), moving outlier "
+                         "magnitude off the activations. 0 disables it. This is "
+                         "the post-training REPAIR baseline that registers "
+                         "(a training-time fix) have to be compared against.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -154,7 +193,8 @@ def main():
     val_stream = np.load(os.path.join(args.data, "val.npy"), mmap_mode="r")
 
     res = {"run": args.run, "k": cfg.n_registers, "seq_len": cfg.seq_len,
-           "a_percentile": args.a_percentile, "settings": []}
+           "a_percentile": args.a_percentile, "smooth_alpha": args.smooth,
+           "settings": []}
 
     # full precision reference, from a clean copy of the weights
     model = RegisterDiffusionTransformer(cfg).to(device)
@@ -174,16 +214,28 @@ def main():
             q.calibrating = True
         val_ce(model, val_stream, cfg.seq_len, args.bs, args.calib_batches,
                device, calibrate=True)
+        if args.smooth > 0:
+            # migrate outlier magnitude activation->weight, then RE-calibrate:
+            # the activation distribution has changed, so the old per-tensor
+            # scale no longer describes it
+            apply_smoothquant(model, {q: q.chan_absmax for q in qs},
+                              args.smooth)
+            for q in qs:
+                q._obs, q.chan_absmax = [], None
+            val_ce(model, val_stream, cfg.seq_len, args.bs, args.calib_batches,
+                   device, calibrate=True)
         for q in qs:
             q.calibrating = False
             q.finish_calibration()
         ce = val_ce(model, val_stream, cfg.seq_len, args.bs, args.val_batches,
                     device)
-        entry = {"w_bits": wb, "a_bits": ab, "ce": ce, "degradation": ce - fp}
+        entry = {"w_bits": wb, "a_bits": ab, "ce": ce, "degradation": ce - fp,
+                 "smooth_alpha": args.smooth}
         res["settings"].append(entry)
         print(f"  W{wb}A{ab:<3} val CE {ce:.4f}   degradation {ce - fp:+.4f}")
 
-    out = args.out or os.path.join(args.run, "quant_eval.json")
+    tag = "" if args.smooth == 0 else f"_sq{args.smooth:g}"
+    out = args.out or os.path.join(args.run, f"quant_eval{tag}.json")
     with open(out, "w") as f:
         json.dump(res, f, indent=2)
     print(f"\nwrote {out}")
