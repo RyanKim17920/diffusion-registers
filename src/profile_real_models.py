@@ -56,6 +56,101 @@ def position_entropy(argmax_all, seq_len):
     }
 
 
+class FakeQuantLinear(torch.nn.Module):
+    """Per-channel INT-N weights, per-tensor INT-N activations, calibrated.
+
+    Architecture-agnostic: wraps whatever nn.Linear modules a released model
+    happens to use, so the same PTQ measurement applies to our models and to
+    an 8B diffusion LM. Per-tensor activation quantization is the setting that
+    activation outliers destroy -- one extreme value sets the scale.
+    """
+
+    def __init__(self, lin, w_bits, a_bits, conv1d=False):
+        super().__init__()
+        self.lin, self.w_bits, self.a_bits = lin, w_bits, a_bits
+        # transformers' Conv1D stores weight as (in, out) and computes
+        # x @ W + b, so the output channel axis is 0 rather than 1
+        self.conv1d = conv1d
+        self.register_buffer("a_absmax", torch.zeros(1, device=lin.weight.device))
+        self.calibrating = True
+        self._wq = None
+
+    def _qw(self):
+        if self._wq is None:
+            w = self.lin.weight.float()
+            qmax = 2 ** (self.w_bits - 1) - 1
+            ch = 0 if self.conv1d else 1
+            sc = w.abs().amax(dim=ch, keepdim=True).clamp(min=1e-8) / qmax
+            self._wq = (torch.clamp(torch.round(w / sc), -qmax - 1, qmax) * sc
+                        ).to(self.lin.weight.dtype)
+        return self._wq
+
+    def forward(self, x):
+        if self.calibrating:
+            with torch.no_grad():
+                self.a_absmax.fill_(max(self.a_absmax.item(),
+                                        x.detach().abs().max().float().item()))
+            return self.lin(x)
+        qmax = 2 ** (self.a_bits - 1) - 1
+        sc = (self.a_absmax / qmax).clamp(min=1e-8).to(x.dtype)
+        xq = torch.clamp(torch.round(x / sc), -qmax - 1, qmax) * sc
+        if self.conv1d:
+            return torch.addmm(self.lin.bias, xq.view(-1, xq.shape[-1]),
+                               self._qw()).view(*xq.shape[:-1], -1)
+        return torch.nn.functional.linear(xq, self._qw(), self.lin.bias)
+
+
+def _is_conv1d(m):
+    return type(m).__name__ == "Conv1D" and hasattr(m, "weight")
+
+
+def swap_linears(module, w_bits, a_bits, skip=("lm_head", "embed", "router",
+                                               "gate")):
+    """Wrap every projection except the head/embedding/MoE-router.
+
+    Handles nn.Linear (LLaMA/Qwen/LLaDA) and transformers' Conv1D (GPT-2).
+    Callers must check the returned count: a silent zero-wrap would report
+    zero quantization degradation, which reads as "quantization is free"
+    rather than "nothing was quantized".
+    """
+    wrapped = []
+    for name, child in module.named_children():
+        full = name.lower()
+        hit = isinstance(child, torch.nn.Linear) or _is_conv1d(child)
+        if hit and not any(s in full for s in skip):
+            q = FakeQuantLinear(child, w_bits, a_bits, conv1d=_is_conv1d(child))
+            setattr(module, name, q)
+            wrapped.append(q)
+        else:
+            wrapped += swap_linears(child, w_bits, a_bits, skip)
+    return wrapped
+
+
+@torch.no_grad()
+def masked_ce(model, tok, texts, seq_len, mask_id, mask_frac, batch, device,
+              seed=0):
+    """Denoising CE at masked positions -- the same quantity our runs report."""
+    g = torch.Generator(device="cpu").manual_seed(seed)
+    tot, n = 0.0, 0
+    for i in range(0, len(texts), batch):
+        enc = tok(texts[i:i + batch], return_tensors="pt", truncation=True,
+                  max_length=seq_len, padding="max_length")
+        ids = enc["input_ids"].to(device)
+        m = (torch.rand(ids.shape, generator=g) < mask_frac).to(device)
+        inp = torch.where(m, torch.full_like(ids, mask_id), ids)
+        out = model(input_ids=inp)
+        lg = out.logits if hasattr(out, "logits") else out[0]
+        sel = m.reshape(-1)
+        if sel.sum() == 0:
+            continue
+        ce = torch.nn.functional.cross_entropy(
+            lg.reshape(-1, lg.shape[-1])[sel].float(),
+            ids.reshape(-1)[sel], reduction="sum")
+        tot += ce.item()
+        n += int(sel.sum())
+    return tot / max(n, 1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
@@ -73,6 +168,8 @@ def main():
     ap.add_argument("--dtype", default="bfloat16")
     ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
     ap.add_argument("--out", default="/data/ryan.kim/registers_runs/real_models")
+    ap.add_argument("--ptq", action="store_true",
+                    help="also measure W8A8 / W8A6 PTQ degradation")
     args = ap.parse_args()
 
     os.environ.setdefault("HF_HOME", "/data/huggingface")
@@ -143,6 +240,35 @@ def main():
         print(f"{l:<6} {e['mean']:>8.1f} {e['max']:>9.1f} {e['p999']:>9.1f} "
               f"{e['outlier_frac']:>13.4f} {e['normalised_entropy']:>13.4f} "
               f"{e['frac_pos0']:>10.4f}")
+    if args.ptq:
+        res["ptq"] = {}
+        fp = masked_ce(model, tok, texts, args.seq_len, mask_id,
+                       args.mask_frac, args.batch, device)
+        res["ptq"]["fp_ce"] = fp
+        print(f"\n  full-precision masked CE {fp:.4f}")
+        for wb, ab in ((8, 8), (8, 6)):
+            qs = swap_linears(model, wb, ab)
+            if len(qs) < nlayers:
+                raise RuntimeError(
+                    f"only {len(qs)} projections wrapped for {args.model} "
+                    f"({nlayers} hidden states) -- the module types are not "
+                    "recognised, and reporting this as PTQ degradation would "
+                    "read as 'quantization is free'")
+            for q in qs:
+                q.calibrating = True
+            masked_ce(model, tok, texts[:args.batch * 2], args.seq_len, mask_id,
+                      args.mask_frac, args.batch, device)
+            for q in qs:
+                q.calibrating = False
+            ce = masked_ce(model, tok, texts, args.seq_len, mask_id,
+                           args.mask_frac, args.batch, device)
+            res["ptq"][f"W{wb}A{ab}"] = {"ce": ce, "degradation": ce - fp}
+            print(f"  W{wb}A{ab} masked CE {ce:.4f}  degradation {ce - fp:+.4f}")
+            for q in qs:  # restore fp weights before the next setting
+                q._wq = None
+            del qs
+            import gc; gc.collect(); torch.cuda.empty_cache()
+
     mx = max(res["layers"][l]["max"] / max(res["layers"][l]["mean"], 1e-6)
              for l in range(nlayers))
     print(f"\npeak max/mean norm ratio across layers: {mx:.1f}x")

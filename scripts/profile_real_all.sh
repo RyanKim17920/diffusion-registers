@@ -17,7 +17,7 @@ set -uo pipefail
 REPO=/admin/home/ryan.kim/registers
 export HF_HOME=/data/huggingface
 export PYTHONPATH="$REPO/src"
-P="$REPO/.venv/bin/python $REPO/src/profile_real_models.py --n_seq 16 --batch 2 --seq_len 1024"
+P="$REPO/.venv/bin/python $REPO/src/profile_real_models.py --n_seq 16 --batch 2 --seq_len 1024 --ptq"
 
 echo "### LINEAGE A: from-scratch bidirectional diffusion (closest to ours)"
 $P --model kuleshov-group/mdlm-owt                 --diffusion || echo "FAILED mdlm-owt"
