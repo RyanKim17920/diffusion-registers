@@ -76,16 +76,7 @@ and steps. Report outlier reduction and W4A4 degradation per scale.
 scale? Three points show direction only; 4 points with 3 seeds is the minimum
 for a claim, and the effect must exceed seed noise at each rung.
 
-## Phase 4 — retrofit into a pretrained dLLM (~20 GPU-hr)
-
-Only if Phases 0–2 pass. Add K registers to `dllm-hub/Qwen3-0.6B-diffusion-mdlm`
-(0.6B, under budget), short continued fine-tune, measure outlier reduction and
-W4A4 degradation against the same model fine-tuned without registers.
-
-This is the bridge from "works when trained from scratch at 300M" to "can be
-applied to a real pretrained dLLM", without pretraining at 8B.
-
-## Phase 5 — write-up
+## Phase 4 — write-up
 
 Sudoku negative → criterion → text positive → scale → retrofit. The negative
 results are the control that makes the positive interpretable; they are not
@@ -99,6 +90,19 @@ filler.
 - **Carried registers / reasoning.** Concurrent group is there at 8B.
 - **Hard Sudoku.** The generator cannot reach low clue counts (0/80 at
   [18,21]); block decoding supplied difficulty instead.
+- **Retrofitting registers into a pretrained dLLM.** Considered and dropped.
+  It tests *repair* (undoing outliers already baked into the weights), not
+  *prevention*, so a null would not falsify our thesis and a positive would
+  reposition us into the repair camp SmoothQuant/DuQuant already own. The
+  fine-tuning budget and data are also free parameters an adversarial reviewer
+  can attribute the effect to, and "add registers to a dLLM and fine-tune" is
+  the concurrent group's methodology.
+
+  The objection it was meant to answer — "I cannot use this without
+  pretraining" — is better answered directly: the cost is +2% FLOPs at
+  pretraining, making this a design recommendation for new models, the same
+  class of claim as QK-norm or attention sinks. That does not need a retrofit
+  experiment to stand.
 
 ## Standing rules
 
