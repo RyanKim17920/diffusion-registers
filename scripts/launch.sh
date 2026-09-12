@@ -10,6 +10,7 @@ set -euo pipefail
 KS="0 4 16"
 SEEDS="0"
 TAG="phase1"
+SCRIPT="train.py"
 EXTRA=""
 RUNS=/data/ryan.kim/registers_runs
 
@@ -18,6 +19,7 @@ while [ $# -gt 0 ]; do
     --ks) KS="$2"; shift 2 ;;
     --seeds) SEEDS="$2"; shift 2 ;;
     --tag) TAG="$2"; shift 2 ;;
+    --script) SCRIPT="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
     *) EXTRA="$EXTRA $1"; shift ;;   # forwarded verbatim to train.py
   esac
@@ -38,4 +40,5 @@ done
 
 echo "jobs file: $JOBS  ($n tasks)"
 cat "$JOBS"
-sbatch --array=0-$((n - 1)) --job-name="reg_${TAG}" "$REPO/scripts/train.sbatch" "$JOBS"
+echo "script: $SCRIPT"
+sbatch --array=0-$((n - 1)) --job-name="reg_${TAG}" "$REPO/scripts/train.sbatch" "$JOBS" "$SCRIPT"

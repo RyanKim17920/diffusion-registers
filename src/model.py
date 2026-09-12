@@ -147,19 +147,26 @@ class RegisterDiffusionTransformer(nn.Module):
     def n_params(self):
         return sum(p.numel() for p in self.parameters())
 
-    def _registers(self, B, device, reg_mode, generator=None):
-        """Build the (B, K, D) register block for this forward pass.
+    def _registers(self, B, device, reg_mode, generator=None, reg_state=None):
+        """Build the (B, K, D) register block fed into this forward pass.
+
+        reg_state is the carried state from the previous denoising step within
+        the same generation block. When it is None the registers are
+        (re-)initialised from the learned embeddings -- that happens at the
+        start of every generation block, never mid-block.
 
         reg_mode:
-          'normal'  -- the learned embeddings, identical for every example
+          'normal'  -- use the registers as they are
           'zero'    -- all-zero registers (ablation: removes their content)
-          'shuffle' -- per-example random permutation of the K learned
-                       embeddings across the K slots (ablation: keeps the
-                       content, destroys the slot identity)
+          'shuffle' -- per-example random permutation across the K slots
+                       (ablation: keeps the content, destroys slot identity)
         """
         if self.K == 0:
             return None
-        reg = self.reg_emb.unsqueeze(0).expand(B, -1, -1)
+        if reg_state is None:
+            reg = self.reg_emb.unsqueeze(0).expand(B, -1, -1)
+        else:
+            reg = reg_state
         if reg_mode == "normal":
             return reg
         if reg_mode == "zero":
@@ -168,11 +175,14 @@ class RegisterDiffusionTransformer(nn.Module):
             idx = torch.argsort(
                 torch.rand(B, self.K, device=device, generator=generator), dim=-1
             )
-            return self.reg_emb[idx]
+            return torch.gather(
+                reg, 1, idx.unsqueeze(-1).expand(-1, -1, reg.shape[-1])
+            )
         raise ValueError(f"unknown reg_mode {reg_mode!r}")
 
     def forward(self, tokens, reg_mode="normal", collect_attn=False,
-                generator=None, return_hidden=False):
+                generator=None, return_hidden=False, reg_state=None,
+                return_reg_state=False):
         """tokens: (B, 163) long. Returns logits (B, 81, 9) for solution cells.
 
         If collect_attn, also returns the per-layer attention weights
@@ -182,7 +192,7 @@ class RegisterDiffusionTransformer(nn.Module):
         assert T == self.cfg.seq_len, \
             f"expected {self.cfg.seq_len} tokens, got {T}"
         x = self.tok_emb(tokens) + self.pos_emb.unsqueeze(0)
-        reg = self._registers(B, tokens.device, reg_mode, generator)
+        reg = self._registers(B, tokens.device, reg_mode, generator, reg_state)
         if reg is not None:
             x = torch.cat([x, reg.to(x.dtype)], dim=1)
         collect = [] if collect_attn else None
@@ -190,6 +200,10 @@ class RegisterDiffusionTransformer(nn.Module):
             x = blk(x, collect=collect)
         h = self.ln_f(x)
         c = self.cfg
+        # the carried state is the normalised final hidden state at the
+        # register positions; ln_f keeps it from drifting in scale as it is
+        # passed from one denoising step to the next
+        new_reg = h[:, self.cfg.seq_len:, :] if self.K else None
         out = h[:, c.out_start:c.out_start + c.out_len, :]
         # return_hidden lets the caller apply the head to a gathered subset of
         # positions; at a 50k vocabulary, materialising logits everywhere is
@@ -197,8 +211,8 @@ class RegisterDiffusionTransformer(nn.Module):
         if not return_hidden:
             out = self.head(out)
         if collect_attn:
-            return out, collect
-        return out
+            return (out, new_reg, collect) if return_reg_state else (out, collect)
+        return (out, new_reg) if return_reg_state else out
 
     @torch.no_grad()
     def hidden_states(self, tokens, reg_mode="normal"):
