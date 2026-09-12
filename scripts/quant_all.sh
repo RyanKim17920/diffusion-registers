@@ -1,0 +1,23 @@
+#!/bin/bash
+# PTQ degradation across every finished run: all scaling rungs, all seeds,
+# with and without the SmoothQuant repair baseline.
+#
+# The paper's headline number comes from here:
+#   degradation(K=0) - degradation(K=16) at W4A4, paired by seed, per rung.
+set -uo pipefail
+REPO=/admin/home/ryan.kim/registers
+RUNS=${1:-/data/ryan.kim/registers_runs}
+export PYTHONPATH="$REPO/src"
+for d in "$RUNS"/text_k*_s* "$RUNS"/text256_k*_s* "$RUNS"/text768_k*_s* \
+         "$RUNS"/lad256_k*_s* "$RUNS"/lad1024_k*_s*; do
+  [ -d "$d" ] || continue
+  [ -f "$d/final.json" ] || { echo "skip $(basename $d) (unfinished)"; continue; }
+  for sq in 0 0.5; do
+    tag=""; [ "$sq" != "0" ] && tag="_sq$sq"
+    [ -f "$d/quant_eval${tag}.json" ] && { echo "skip $(basename $d)$tag (done)"; continue; }
+    echo "=== $(basename "$d")  smooth=$sq ==="
+    "$REPO/.venv/bin/python" "$REPO/src/quant_eval.py" --run "$d" \
+      --smooth "$sq" --val_batches 16 --bs 8 || echo "QUANT_FAILED $d sq=$sq"
+  done
+done
+echo QUANT_ALL_DONE
