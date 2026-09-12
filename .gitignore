@@ -4,3 +4,4 @@ runs/
 data/
 *.npz
 *.pt
+runs/
