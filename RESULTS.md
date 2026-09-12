@@ -230,6 +230,20 @@ the scales we can afford reaches it.
 - **Scale.** The text result covers 51.5M params. A d=256/768/1024 ladder was
   launched and stopped mid-flight when the Phase-0 gate failed; those rungs are
   not analysed here and are excluded from the 59 reported runs.
+- **No text decoder was ever run.** The text experiments measure only the
+  one-jump denoising objective: mask a random subset, predict, single forward
+  pass. No iterative denoising, no generation, no sampler. So the text result
+  says that static extra capacity does not lower one-jump CE and does not fix
+  per-channel outliers — it says nothing about registers passing information
+  across denoising steps, since text registers were stateless.
+- **Carried registers were only tested on Sudoku, where they are redundant by
+  construction.** In Sudoku the board is fully observable and the constraints
+  are exactly recomputable from the revealed cells, so a register carrying
+  hidden state duplicates what the canvas already holds. In text that argument
+  is much weaker: the discourse state must be re-inferred from tokens at every
+  step, and long-range commitments are not recoverable by local constraint
+  propagation. Carried registers on text remains untested and is the cell where
+  the idea has the most room left.
 - **The quantization sweep was never run.** `src/quant_eval.py` implements
   W4A4 + SmoothQuant, but the thesis died at the per-channel gate before it was
   executed. No PTQ degradation number is claimed anywhere in this document.

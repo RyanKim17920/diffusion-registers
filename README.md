@@ -53,6 +53,11 @@ The project stopped at that gate. `src/quant_eval.py` ships and implements the
 W4A4 + SmoothQuant sweep, **but that sweep was never run** — the thesis died on
 per-channel statistics before quantization was attempted.
 
+Two scope limits worth stating: the text runs measure only the one-jump
+denoising objective — **no text decoder was ever run** — and carried registers
+were tested only on Sudoku, where the fully-observable board makes a carried
+state redundant with the visible canvas. Carried registers on text is untested.
+
 The reusable takeaway is a cheap pre-check: measure your baseline's outlier
 severity at `K=0` first. It is consistent with both nulls here, though it was
 formulated after seeing them and has not been tested prospectively.
