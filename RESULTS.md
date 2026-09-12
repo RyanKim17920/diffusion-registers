@@ -120,12 +120,54 @@ register occupies which slot costs nothing. The registers hold a
 permutation-invariant aggregate, a bag of state with no division of labour, which
 is also why adding more of them does not help.
 
+## Experiment 3 — text (wikitext-103), stateless registers
+
+51.5M params, 8 layers, d=512, seq 1024, 119.7M GPT-2 BPE train tokens, 50k
+steps, K in {0,16}. Metric is validation denoising CE (no ceiling). Seed noise
+here is far tighter than Sudoku: K=0 sd 0.0055 nats over 8 seeds.
+
+**Text has the pathology Sudoku lacked.** This is what makes it a real test:
+
+| | Sudoku K=0 | Text K=0 |
+| --- | --- | --- |
+| outlier fraction (>3x median) | .0008 – .0044 | **.026 – .038** |
+| max / mean token norm | ~1.8x | **~5.2x** |
+
+The mean argmax position is ~500 of 1024 (uniform), so these are
+content-dependent artifact tokens, not a fixed positional sink.
+
+**Registers absorb them.** Outlier fraction roughly halves at every layer
+(L4: .0376 -> .0167) and max token norm drops ~40% (L6: 1914 -> 1138). Unlike
+Sudoku, the text stream reads them: text->register attention is .11–.42 against
+a .0154 uniform baseline (7–27x above chance), and the registers are not
+themselves high-norm (~1.1x token norm). `shuffle` is still an exact no-op, so
+it remains a permutation-invariant bag of state.
+
+**The perplexity win is small and may not survive compute matching.** Paired
+over 3 seeds, K=16 beats K=0 by 0.0086 nats (ppl 101.41 -> 100.22, ~1.2%),
+3/3 seeds, t=-4.76 df=2 — pending n=8 confirmation, since the Sudoku K=64 arm
+looked this good at n=3 and dissolved.
+
+Cost: wall clock +6.0%, analytic FLOPs +2.0% (linear +1.56%, attention +3.15%);
+the gap is implementation overhead, since 1024+16=1040 breaks tensor-core
+tiling. Spending +6% on more steps instead is worth ~0.011–0.019 nats at
+loss-compute exponents 0.04–0.07 — more than the registers buy. So
+wall-clock-matched they plausibly lose and FLOP-matched they win narrowly.
+A direct compute-matched control (K=0 at 53k steps vs K=16 at 50k) is running.
+
+**No instability to prevent.** Zero grad-norm spikes above 5x median in any of
+the 16 runs; K=16 is marginally smoother (mean grad norm 0.821 vs 0.885) but
+neither arm is near unstable. The likelier practical payoff is the 40% drop in
+max activation norm — activation outliers are the main obstacle to INT8/FP8
+quantization, and that effect dwarfs the perplexity change.
+
 ## Limitations
 
-- **One task, one scale.** ~4.8M params, 163-token sequences. The K=0 norm
-  evidence says this setting lacks the pathology registers target; a larger model
-  on long-form text may not. That is the natural next test, and the code is
-  already parameterised for it (`src/text_train.py`, wikitext-103).
+- **Scale.** The text result is a single model size (51.5M). A d=256 / d=768
+  ladder at fixed data is running to show whether the gap grows or shrinks; the
+  headline 0.0086 nats is too small to extrapolate from one point.
+- **The text CE win is provisional** at n=3 paired seeds, for exactly the reason
+  the Sudoku K=64 arm was: n=3 underestimates the paired sd.
 - **The hard-Sudoku control is weak.** Targeting clue counts [20,24] produced a
   set piled at the top of the range (24: 206831, 23: 78292, 22: 13956, 21: 906,
   20: 15 of 300k), because digs targeting 20–22 almost always fail the uniqueness
