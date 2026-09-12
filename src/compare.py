@@ -140,6 +140,7 @@ def main():
         print(f"no runs found under {args.runs}")
         return
     table(runs)
+    aggregate(runs)
     by_clue_table(runs)
     png = args.png or os.path.join(args.runs, "curves.png")
     try:
@@ -147,6 +148,76 @@ def main():
     except Exception as e:  # plotting is a convenience, never the point
         print(f"(plot skipped: {e})")
 
+
+
+# ---------------------------------------------------------------- aggregation
+
+def aggregate(runs, hard_max_clues=27):
+    """Group finished runs by K and report mean +/- sd across seeds.
+
+    Exact-solve accuracy saturates on easy puzzles, so the hard-bucket column
+    (clue count <= hard_max_clues) and the val CE are the signals that stay
+    informative once the headline number approaches 1.0.
+    """
+    import statistics as st
+
+    by_k = {}
+    for r in runs:
+        if not r.get("final"):
+            continue
+        by_k.setdefault(r["config"]["k"], []).append(r)
+    if not by_k:
+        print("\n(no finished runs to aggregate)")
+        return {}
+
+    def hard_acc(fin):
+        b = fin["test"].get("by_clues")
+        if not b:
+            return None
+        num = den = 0
+        for c, v in b.items():
+            if int(c) <= hard_max_clues:
+                num += v["exact_solve_acc"] * v["n"]
+                den += v["n"]
+        return num / den if den else None
+
+    def ms(xs):
+        xs = [x for x in xs if x is not None]
+        if not xs:
+            return None, None
+        return st.mean(xs), (st.stdev(xs) if len(xs) > 1 else 0.0)
+
+    print(f"\nAggregated across seeds (mean +/- sd); "
+          f"'hard' = test puzzles with <= {hard_max_clues} clues")
+    print(f"{'K':>4}  {'seeds':>5}  {'val CE':>17}  {'test exact':>17}  "
+          f"{'test exact (hard)':>19}")
+    out = {}
+    for k in sorted(by_k):
+        rs = by_k[k]
+        ce_m, ce_s = ms([r["final"]["val_ce"] for r in rs])
+        ex_m, ex_s = ms([r["final"]["test"]["exact_solve_acc"] for r in rs])
+        hd_m, hd_s = ms([hard_acc(r["final"]) for r in rs])
+        out[k] = {"n_seeds": len(rs), "val_ce": [ce_m, ce_s],
+                  "test_exact": [ex_m, ex_s], "test_exact_hard": [hd_m, hd_s]}
+        def c(m, s):
+            return "-" if m is None else f"{m:.4f} +/- {s:.4f}"
+        print(f"{k:>4}  {len(rs):>5}  {c(ce_m, ce_s):>17}  {c(ex_m, ex_s):>17}  "
+              f"{c(hd_m, hd_s):>19}")
+
+    base = out.get(0)
+    if base:
+        print("\nDelta vs K=0 baseline (positive test-exact delta = registers help):")
+        for k in sorted(out):
+            if k == 0:
+                continue
+            d_ce = out[k]["val_ce"][0] - base["val_ce"][0]
+            d_ex = out[k]["test_exact"][0] - base["test_exact"][0]
+            noise = max(base["test_exact"][1], out[k]["test_exact"][1])
+            verdict = ("within seed noise" if abs(d_ex) <= noise
+                       else ("BETTER" if d_ex > 0 else "WORSE"))
+            print(f"  K={k:<3} val CE {d_ce:+.4f}   test exact {d_ex:+.4f}   "
+                  f"(seed sd {noise:.4f}) -> {verdict}")
+    return out
 
 if __name__ == "__main__":
     main()
