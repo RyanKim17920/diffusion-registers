@@ -246,9 +246,9 @@ the scales we can afford reaches it.
 ## Reproducing
 
 ```bash
-scripts/launch.sh --ks "0 1 4 16 64" --seeds "0 1 2" --tag phase1          # stateless
+scripts/launch.sh --ks "0 1 4 16 64" --seeds "0 1 2" --tag phase1 | bash   # stateless
 scripts/launch.sh --ks "0 1 4 16 64" --seeds "0 1 2" --tag blk \
-    --script train_block.py --block_size 9 --steps 20000                   # carried
-.venv/bin/python src/compare.py --glob 'blk_*'
-.venv/bin/python src/summarize_block_analysis.py
+    --script train_block.py --block_size 9 --steps 20000 | bash            # carried
+python src/compare.py --glob 'blk_*'
+python src/summarize_block_analysis.py
 ```

@@ -1,18 +1,25 @@
 #!/bin/bash
-# Build a jobs file from a K list x seed list and submit it as one array job.
+# Emit one training command per (K, seed) combination.
 #
-#   scripts/launch.sh --ks "0 4 16" --seeds "0 1 2" --tag phase1
-#   scripts/launch.sh --ks "0 1 4 16 64" --seeds "0 1 2" --tag ksweep --steps 40000
+# Deliberately scheduler-free: it prints commands rather than submitting them,
+# so it works with plain bash, xargs, GNU parallel, or any cluster scheduler.
 #
-# Every arm gets identical --steps/--bs/--lr/etc; only --k and --seed vary.
+#   scripts/launch.sh --ks "0 4 16" --seeds "0 1 2" --tag phase1 | bash
+#   scripts/launch.sh --ks "0 16" --seeds "0 1 2" --script text_train.py \
+#       --seq_len 1024 --steps 50000 | xargs -P 4 -I{} bash -c '{}'
+#
+# Every arm gets identical settings; only --k and --seed vary.
 set -euo pipefail
+
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+PY="${REG_PYTHON:-python}"
+RUNS="${REG_RUNS:-$REPO/runs}"
 
 KS="0 4 16"
 SEEDS="0"
-TAG="phase1"
+TAG="run"
 SCRIPT="train.py"
 EXTRA=""
-RUNS="${REG_RUNS:-$REPO/runs}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -21,24 +28,13 @@ while [ $# -gt 0 ]; do
     --tag) TAG="$2"; shift 2 ;;
     --script) SCRIPT="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
-    *) EXTRA="$EXTRA $1"; shift ;;   # forwarded verbatim to train.py
+    *) EXTRA="$EXTRA $1"; shift ;;   # forwarded verbatim to the training script
   esac
 done
 
-REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
-mkdir -p "$RUNS/slurm" "$RUNS/jobs"
-JOBS="$RUNS/jobs/${TAG}.txt"
-: > "$JOBS"
-
-n=0
 for k in $KS; do
   for s in $SEEDS; do
-    echo "--k $k --seed $s --name ${TAG}_k${k}_s${s} --out $RUNS$EXTRA" >> "$JOBS"
-    n=$((n + 1))
+    echo "PYTHONPATH=$REPO/src $PY $REPO/src/$SCRIPT --k $k --seed $s" \
+         "--name ${TAG}_k${k}_s${s} --out $RUNS$EXTRA"
   done
 done
-
-echo "jobs file: $JOBS  ($n tasks)"
-cat "$JOBS"
-echo "script: $SCRIPT"
-sbatch --array=0-$((n - 1)) --job-name="reg_${TAG}" "$REPO/scripts/train.sbatch" "$JOBS" "$SCRIPT"
