@@ -46,18 +46,31 @@ class ChannelObserver:
         self.absmax = c if self.absmax is None else torch.maximum(self.absmax, c)
         self.n += 1
 
-    def stats(self):
+    def stats(self, n_top=32):
         a = self.absmax.cpu().numpy().astype(np.float64)
         med = float(np.median(a))
         mx = float(a.max())
         mean, sd = a.mean(), a.std()
         kurt = float((((a - mean) / (sd + 1e-12)) ** 4).mean()) if sd > 0 else 0.0
+        srt = np.sort(a)[::-1]
+        tot = max(a.sum(), 1e-12)
+        # The SHAPE matters, not just the summary: a handful of catastrophic
+        # channels and a broad heavy tail give the same max/median but call
+        # for different fixes (per-channel handling vs rotation). Keep the
+        # sorted head and the quantile profile so the distribution is visible.
         return {
             "max": mx,
             "median": med,
             "max_over_median": mx / max(med, 1e-12),
             "kurtosis": kurt,
-            "top1_share": mx / max(a.sum(), 1e-12),
+            "top1_share": mx / tot,
+            "top8_share": float(srt[:8].sum() / tot),
+            "top32_share": float(srt[:32].sum() / tot),
+            "n_over_4x_median": int((a > 4 * med).sum()),
+            "n_over_10x_median": int((a > 10 * med).sum()),
+            "quantiles": {q: float(np.quantile(a, q))
+                          for q in (0.5, 0.9, 0.99, 0.999, 1.0)},
+            "top_channels": [float(x) for x in srt[:n_top]],
             "n_channels": int(a.size),
         }
 
@@ -118,8 +131,19 @@ def main():
         print(f"  channel kurtosis        mean {np.mean(kurts):8.2f}   "
               f"worst module {np.max(kurts):8.2f}")
         worst = max(st.items(), key=lambda kv: kv[1]["max_over_median"])
-        print(f"  worst module: {worst[0]}  max/median {worst[1]['max_over_median']:.1f} "
-              f"top1_share {worst[1]['top1_share']:.4f}")
+        w = worst[1]
+        print(f"  worst module: {worst[0]}  max/median {w['max_over_median']:.1f}")
+        print(f"    spike shape: top1 {w['top1_share']:.4f} of total, "
+              f"top8 {w['top8_share']:.4f}, top32 {w['top32_share']:.4f}")
+        print(f"    channels over 4x median: {w['n_over_4x_median']:>4} / "
+              f"{w['n_channels']}   over 10x: {w['n_over_10x_median']}")
+        qs = w["quantiles"]
+        print("    channel-absmax quantiles  " + "  ".join(
+            f"p{int(q * 100) if q < 1 else 'max'}={v:.1f}" for q, v in qs.items()))
+        print("    top 12 channels: " + " ".join(f"{x:.0f}" for x in
+                                                 w["top_channels"][:12]))
+        n_spiky = sum(1 for v in st.values() if v["n_over_10x_median"] > 0)
+        print(f"  modules with any channel >10x median: {n_spiky}/{len(st)}")
 
     # K=0 vs K>0 comparison, which is the actual gate
     zero = [n for n, v in all_res.items() if v["k"] == 0]
@@ -129,7 +153,8 @@ def main():
             return np.mean([np.mean([m[field] for m in all_res[n]["modules"].values()])
                             for n in names])
         print("\n=== GATE: does the per-channel outlier shrink? ===")
-        for field in ("max_over_median", "kurtosis", "top1_share"):
+        for field in ("max_over_median", "kurtosis", "top1_share",
+                      "top8_share", "n_over_4x_median", "n_over_10x_median"):
             a, b = agg(zero, field), agg(reg, field)
             print(f"  {field:<16} K=0 {a:10.3f}   K>0 {b:10.3f}   "
                   f"change {100 * (b - a) / a:+7.1f}%")
