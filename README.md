@@ -74,6 +74,18 @@ in 1..9; cell (r, c) is index `r*9 + c`. `src/verify_sudoku.py` re-checks
 validity, puzzle/solution agreement, split disjointness, and uniqueness
 (with an independently written solver).
 
+## Two register designs
+
+`src/train.py` trains the **stateless** design: registers re-read from the
+learned embeddings on every forward pass, free-order decoding.
+
+`src/train_block.py` trains the **carried** design: registers persist across the
+denoising steps within a generation block and reset at the block boundary, with
+semi-autoregressive block decoding and backprop through the carry. See
+`src/blockdiff.py`.
+
+Results for both are in [RESULTS.md](RESULTS.md).
+
 ## Running
 
 ```bash
@@ -102,5 +114,9 @@ cluster's 12.8 driver.
 | `src/gen_sudoku.py` | unique-solution puzzle generator |
 | `src/verify_sudoku.py` | independent dataset verification |
 | `src/compare.py` | cross-run table, per-clue-count breakdown, curve plots |
-| `src/analyze.py` | register attention/norms + causal ablations |
+| `src/analyze.py` | register attention/norms + causal ablations (stateless) |
+| `src/blockdiff.py` | block plan, unrolled per-block loss, block decoder |
+| `src/train_block.py` | training for the carried-register design |
+| `src/analyze_block.py` | no_carry/zero/shuffle ablations + carry dynamics |
+| `src/text_train.py` | text MDLM (wikitext-103), same register mechanism |
 | `scripts/launch.sh` | build a jobs file and submit the array |
