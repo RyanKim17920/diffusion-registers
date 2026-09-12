@@ -1,5 +1,18 @@
 # Plan
 
+## What we are NOT claiming
+
+Registers do not improve loss. Measured, not assumed:
+
+- text perplexity, n=8 paired: -0.0049 nats, t=-1.24, p~0.22 — **withdrawn**
+- compute-matched (same +6% wall clock spent on extra steps): registers are
+  **worse** by +0.0061 nats
+- FLOP-matched (+2%): a dead heat, ~0.005 nats either way
+
+The paper says this plainly. The claim is about quantization, and a loss-neutral
+intervention that buys quantization robustness at +2% FLOPs is a clean story;
+pretending it also helps perplexity would be both false and unnecessary.
+
 ## Thesis
 
 Activation outliers in diffusion LMs are currently handled by **post-training
@@ -57,7 +70,9 @@ thesis is dead.
 `quant_eval.py` over the existing text runs, 8 seeds, W8A8 / W8A6 / W4A8 /
 W4A4. Report degradation (quantized − FP), paired by seed.
 
-**Gate:** registers must reduce W4A4 degradation. Absolute CE is secondary.
+**Gate:** registers must reduce W4A4 degradation. Absolute CE is not a claim
+at all — see "What we are NOT claiming". The headline number of the paper is
+degradation(K=0) - degradation(K=16) at W4A4, paired by seed.
 
 ## Phase 2 — against and with the repair baselines (~8 GPU-hr)
 
@@ -78,7 +93,9 @@ and steps. Per rung, plot against model size:
 
 1. per-channel max/median ratio, K=0 vs K=16   <- the mechanism
 2. W4A4 PTQ degradation, K=0 vs K=16           <- the payoff
-3. val CE gap, FLOP-matched                    <- the cost side
+3. val CE gap, FLOP-matched                    <- cost side; expected ~0,
+                                                  reported for honesty, not
+                                                  as a benefit
 
 **The question is the trend, not the level.** Three outcomes and what each
 means:
