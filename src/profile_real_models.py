@@ -218,6 +218,11 @@ def main():
     ap.add_argument("--batch", type=int, default=2)
     ap.add_argument("--mult", type=float, default=3.0)
     ap.add_argument("--dtype", default="bfloat16")
+    ap.add_argument("--tokenizer", default=None,
+                    help="tokenizer repo to use instead of the model's own; "
+                         "some checkpoints (e.g. mdlm-owt) ship a config the "
+                         "fast tokenizer cannot instantiate but are plain "
+                         "GPT-2 BPE underneath")
     ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
     ap.add_argument("--out", default="/data/ryan.kim/registers_runs/real_models")
     ap.add_argument("--channels", action="store_true",
@@ -232,7 +237,15 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = getattr(torch, args.dtype)
-    tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tok_src = args.tokenizer or args.model
+    try:
+        tok = AutoTokenizer.from_pretrained(tok_src, trust_remote_code=True)
+    except Exception as e:
+        print(f"tokenizer {tok_src} failed ({type(e).__name__}); falling back "
+              f"to gpt2 -- verify this matches the model's vocabulary")
+        tok = AutoTokenizer.from_pretrained("gpt2")
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token or tok.unk_token
     try:
         model = AutoModelForCausalLM.from_pretrained(
             args.model, torch_dtype=dtype, trust_remote_code=True).to(device)
