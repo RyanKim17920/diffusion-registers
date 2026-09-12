@@ -14,8 +14,8 @@
 # If that split holds, the AR sink fix ("keep token 0") transfers only to the
 # adapted models, and from-scratch dLLMs need something else.
 set -uo pipefail
-REPO=/admin/home/ryan.kim/registers
-export HF_HOME=/data/huggingface
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 export PYTHONPATH="$REPO/src"
 P="$REPO/.venv/bin/python $REPO/src/profile_real_models.py --n_seq 16 --batch 2 --seq_len 1024 --ptq"
 

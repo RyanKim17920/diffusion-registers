@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from model import ModelConfig, RegisterDiffusionTransformer
+import paths
 
 DATA_RNG_OFFSET = 1000
 MASK_RNG_OFFSET = 2000
@@ -34,8 +35,8 @@ def parse_args():
     p.add_argument("--k", type=int, required=True)
     p.add_argument("--name", type=str, required=True)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--data", type=str, default="/data/ryan.kim/registers_text_data")
-    p.add_argument("--out", type=str, default="/data/ryan.kim/registers_runs")
+    p.add_argument("--data", type=str, default=paths.TEXT_DATA)
+    p.add_argument("--out", type=str, default=paths.RUNS)
     # model
     p.add_argument("--seq_len", type=int, default=512)
     p.add_argument("--d_model", type=int, default=512)

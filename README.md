@@ -21,14 +21,15 @@ Necessity is not usefulness.
 | comparison | result |
 |---|---|
 | K=16 vs K=0, n=8 | −0.0049 nats, t=−1.24, **p≈0.22** |
-| same at n=3 | −0.0086, t=−4.76 (dissolved with more seeds) |
+| the same at n=3 | −0.0086, t=−4.76 (dissolved with more seeds) |
 | compute-matched (+6% wall clock as extra steps) | **+0.0061 nats worse** |
 
 ### Why
 
 Registers cut per-**token** max activation norm 40%, but per-**channel**
-max/median only 4.5% (t=−2.05) — and that baseline is **4.2×**, where low-bit
-quantization breaks at 100–1000×. GPT-2 (124M) is 8.75×. There is no pathology
-to fix at this scale.
+max/median only 4.5% — and that baseline is **4.2×**, where low-bit
+quantization breaks at 100–1000×. GPT-2 (124M) is 8.75×. No pathology to fix at
+this scale.
 
-Details in [RESULTS.md](RESULTS.md); scope and stop criteria in [PLAN.md](PLAN.md).
+[RESULTS.md](RESULTS.md) · [PLAN.md](PLAN.md) · paths configurable via
+`REG_RUNS`, `REG_SUDOKU_DATA`, `REG_TEXT_DATA`.

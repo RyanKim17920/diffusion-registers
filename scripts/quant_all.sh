@@ -5,8 +5,8 @@
 # The paper's headline number comes from here:
 #   degradation(K=0) - degradation(K=16) at W4A4, paired by seed, per rung.
 set -uo pipefail
-REPO=/admin/home/ryan.kim/registers
-RUNS=${1:-/data/ryan.kim/registers_runs}
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+RUNS="${1:-${REG_RUNS:-$REPO/runs}}"
 export PYTHONPATH="$REPO/src"
 for d in "$RUNS"/text_k*_s* "$RUNS"/text256_k*_s* "$RUNS"/text768_k*_s* \
          "$RUNS"/lad256_k*_s* "$RUNS"/lad1024_k*_s*; do

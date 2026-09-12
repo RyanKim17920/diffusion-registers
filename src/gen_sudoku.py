@@ -34,7 +34,7 @@ emit colliding solutions.
 Usage:
     python gen_sudoku.py --master-seed 1234 --workers 64 \\
         --train-n 1000000 --val-n 20000 --test-n 20000 \\
-        --out-dir /data/ryan.kim/registers_data
+        --out-dir data/sudoku
 """
 
 from __future__ import annotations

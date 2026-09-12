@@ -12,7 +12,7 @@ SEEDS="0"
 TAG="phase1"
 SCRIPT="train.py"
 EXTRA=""
-RUNS=/data/ryan.kim/registers_runs
+RUNS="${REG_RUNS:-$REPO/runs}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-REPO=/admin/home/ryan.kim/registers
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 mkdir -p "$RUNS/slurm" "$RUNS/jobs"
 JOBS="$RUNS/jobs/${TAG}.txt"
 : > "$JOBS"

@@ -30,6 +30,7 @@ import torch
 
 from model import ModelConfig, RegisterDiffusionTransformer
 from text_train import VAL_EVAL_SEED, make_batch, mask_id_of
+import paths
 
 
 class ChannelObserver:
@@ -110,8 +111,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", nargs="+", required=True,
                     help="run directory names under --root")
-    ap.add_argument("--root", default="/data/ryan.kim/registers_runs")
-    ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
+    ap.add_argument("--root", default=paths.RUNS)
+    ap.add_argument("--data", default=paths.TEXT_DATA)
     ap.add_argument("--batches", type=int, default=8)
     ap.add_argument("--bs", type=int, default=8)
     ap.add_argument("--out", default=None)

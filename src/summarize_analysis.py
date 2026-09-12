@@ -6,7 +6,7 @@ Answers the three phase-2 questions across seeds:
      uniform-attention baseline K/(163+K))
   3. Do they accumulate activation norm anyway?
 
-    python src/summarize_analysis.py --runs /data/ryan.kim/registers_runs
+    python src/summarize_analysis.py --runs runs
 """
 
 import argparse
@@ -14,6 +14,7 @@ import glob
 import json
 import os
 import statistics as st
+import paths
 
 
 def ms(xs):
@@ -29,7 +30,7 @@ def cell(m, s, nd=4):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", default="/data/ryan.kim/registers_runs")
+    ap.add_argument("--runs", default=paths.RUNS)
     ap.add_argument("--pattern", default="phase1_k*_s*/analysis_val.json")
     args = ap.parse_args()
 

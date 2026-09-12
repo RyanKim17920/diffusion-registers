@@ -1,6 +1,6 @@
 """Tokenize a text corpus into flat uint16 token streams for the text MDLM.
 
-    python src/text_data.py --out /data/ryan.kim/registers_text_data
+    python src/text_data.py --out data/text
 
 Writes <out>/{train,val,test}.npy (flat uint16 token ids) plus meta.json.
 GPT-2 BPE has 50257 ids, which fits in uint16.
@@ -12,6 +12,7 @@ import os
 import time
 
 import numpy as np
+import paths
 
 
 def main():
@@ -19,7 +20,7 @@ def main():
     ap.add_argument("--dataset", default="Salesforce/wikitext")
     ap.add_argument("--config", default="wikitext-103-raw-v1")
     ap.add_argument("--tokenizer", default="gpt2")
-    ap.add_argument("--out", default="/data/ryan.kim/registers_text_data")
+    ap.add_argument("--out", default=paths.TEXT_DATA)
     ap.add_argument("--num_proc", type=int, default=32)
     args = ap.parse_args()
 

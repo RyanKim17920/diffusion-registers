@@ -8,7 +8,7 @@ K=0 token-norm profile on a setting where the pathology is reported.
 Also reports text->register attention and the zero/shuffle ablations, scored
 by validation denoising CE (no ceiling, unlike exact-solve accuracy).
 
-    python src/analyze_text.py --run /data/ryan.kim/registers_runs/text_k16_s0
+    python src/analyze_text.py --run runs/text_k16_s0
 """
 
 import argparse
@@ -23,6 +23,7 @@ import torch
 from analyze import attention_stats, norm_stats
 from model import ModelConfig, RegisterDiffusionTransformer
 from text_train import VAL_EVAL_SEED, loss_on_batch, make_batch, mask_id_of
+import paths
 
 
 def load_run(run_dir, device):
@@ -122,7 +123,7 @@ def sink_position_stats(model, tokens, chunk=16, outlier_mult=3.0):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
+    ap.add_argument("--data", default=paths.TEXT_DATA)
     ap.add_argument("--n_stats", type=int, default=64)
     ap.add_argument("--mask_frac", type=float, default=0.5)
     ap.add_argument("--val_batches", type=int, default=32)

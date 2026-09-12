@@ -1,18 +1,18 @@
 #!/bin/bash
 #SBATCH --job-name=registers
-#SBATCH --partition=n
+#SBATCH --partition=gpu        # cluster-specific; edit or pass --partition to sbatch
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96G
 #SBATCH --time=6:00:00
-#SBATCH --output=/data/ryan.kim/registers_runs/slurm/%x_%A_%a.out
-#SBATCH --error=/data/ryan.kim/registers_runs/slurm/%x_%A_%a.out
+#SBATCH --output=runs/slurm/%x_%A_%a.out
+#SBATCH --error=runs/slurm/%x_%A_%a.out
 set -euo pipefail
 
 # One array task per line of the jobs file. Each line is the argument string
 # passed verbatim to src/train.py.
 #   sbatch --array=0-2 scripts/train.sbatch /path/to/jobs.txt [train_block.py]
-REPO=/admin/home/ryan.kim/registers
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 JOBS=${1:?usage: sbatch --array=0-N scripts/train.sbatch <jobs.txt> [script.py]}
 SCRIPT=${2:-train.py}
 

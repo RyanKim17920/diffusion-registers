@@ -1,6 +1,6 @@
 """Aggregate the block-diffusion analysis_block.json files across seeds.
 
-    python src/summarize_block_analysis.py --runs /data/ryan.kim/registers_runs
+    python src/summarize_block_analysis.py --runs runs
 """
 
 import argparse
@@ -8,6 +8,7 @@ import glob
 import json
 import os
 import statistics as st
+import paths
 
 
 def ms(xs):
@@ -23,7 +24,7 @@ def cell(m, s, nd=4):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", default="/data/ryan.kim/registers_runs")
+    ap.add_argument("--runs", default=paths.RUNS)
     ap.add_argument("--pattern", default="blk_k*_s*/analysis_block.json")
     args = ap.parse_args()
 

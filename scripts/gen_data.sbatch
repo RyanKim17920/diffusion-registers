@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=gen_sudoku
-#SBATCH --partition=c
+#SBATCH --partition=cpu        # cluster-specific; edit or pass --partition to sbatch
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=64G
 #SBATCH --time=4:00:00
-#SBATCH --output=/admin/home/ryan.kim/registers/runs/gen_data_%j.out
+#SBATCH --output=$REPO/runs/gen_data_%j.out
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ echo "host: $(hostname)"
 echo "python: $(command -v "$PYTHON_BIN")"
 "$PYTHON_BIN" -c "import numpy; print('numpy', numpy.__version__)"
 
-cd /admin/home/ryan.kim/registers
+cd $REPO
 
 "$PYTHON_BIN" src/gen_sudoku.py \
     --master-seed 1234 \
@@ -25,4 +25,4 @@ cd /admin/home/ryan.kim/registers
     --train-n 1000000 \
     --val-n 20000 \
     --test-n 20000 \
-    --out-dir /data/ryan.kim/registers_data
+    --out-dir ${REG_SUDOKU_DATA:-$REPO/data/sudoku}

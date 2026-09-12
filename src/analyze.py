@@ -7,7 +7,7 @@ Reports, for one run:
     normal / zero / shuffle
   * exact-solve accuracy by clue count
 
-    python src/analyze.py --run /data/ryan.kim/registers_runs/k4_s0 --n_solve 2000
+    python src/analyze.py --run runs/k4_s0 --n_solve 2000
 """
 
 import argparse
@@ -26,6 +26,7 @@ from model import (
     RegisterDiffusionTransformer,
     build_tokens,
 )
+import paths
 
 
 def load_run(run_dir, device):
@@ -138,7 +139,7 @@ def norm_stats(model, tokens, chunk=256, outlier_mult=3.0):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--data", default="/data/ryan.kim/registers_data")
+    ap.add_argument("--data", default=paths.SUDOKU_DATA)
     ap.add_argument("--split", default="val")
     ap.add_argument("--n_solve", type=int, default=2000,
                     help="puzzles decoded per ablation arm")

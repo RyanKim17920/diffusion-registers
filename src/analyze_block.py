@@ -15,7 +15,7 @@ model actually USE the carry?
      state and to the learned initialisation). A state that never moves, or
      that instantly forgets its initialisation, is not a scratchpad.
 
-    python src/analyze_block.py --run /data/ryan.kim/registers_runs/blk_k16_s0
+    python src/analyze_block.py --run runs/blk_k16_s0
 """
 
 import argparse
@@ -29,6 +29,7 @@ import torch.nn.functional as F
 from blockdiff import block_solve, n_blocks_for
 from diffusion import load_split, solve_metrics
 from model import MASK, N_CELLS, ModelConfig, RegisterDiffusionTransformer, build_tokens
+import paths
 
 
 def load_run(run_dir, device):
@@ -92,7 +93,7 @@ def carry_dynamics(model, puzzles, device, block_size, n=128, block=4):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--data", default="/data/ryan.kim/registers_data")
+    ap.add_argument("--data", default=paths.SUDOKU_DATA)
     ap.add_argument("--split", default="val")
     ap.add_argument("--n_solve", type=int, default=2000)
     ap.add_argument("--n_dyn", type=int, default=128)

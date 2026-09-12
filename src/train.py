@@ -29,6 +29,7 @@ from diffusion import (
     solve_metrics,
 )
 from model import MASK, N_CELLS, ModelConfig, RegisterDiffusionTransformer
+import paths
 
 DATA_RNG_OFFSET = 1000
 MASK_RNG_OFFSET = 2000
@@ -40,8 +41,8 @@ def parse_args():
     p.add_argument("--k", type=int, required=True, help="number of register tokens")
     p.add_argument("--name", type=str, required=True)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--data", type=str, default="/data/ryan.kim/registers_data")
-    p.add_argument("--out", type=str, default="/data/ryan.kim/registers_runs")
+    p.add_argument("--data", type=str, default=paths.SUDOKU_DATA)
+    p.add_argument("--out", type=str, default=paths.RUNS)
     # model
     p.add_argument("--d_model", type=int, default=256)
     p.add_argument("--n_layers", type=int, default=6)

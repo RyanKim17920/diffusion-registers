@@ -1,7 +1,7 @@
 #!/bin/bash
 set -uo pipefail
-REPO=/admin/home/ryan.kim/registers
-RUNS=${1:-/data/ryan.kim/registers_runs}
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+RUNS="${1:-${REG_RUNS:-$REPO/runs}}"
 export PYTHONPATH="$REPO/src"
 for d in "$RUNS"/text_k*_s*; do
   [ -f "$d/final.json" ] || { echo "skip $(basename $d) (unfinished)"; continue; }

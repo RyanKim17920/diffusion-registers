@@ -1,13 +1,14 @@
 """Compare runs: print a table of final metrics and plot the curves.
 
-    python src/compare.py --runs /data/ryan.kim/registers_runs --names k0_s0 k4_s0 k16_s0
-    python src/compare.py --runs /data/ryan.kim/registers_runs --glob 'k*_s0'
+    python src/compare.py --runs runs --names k0_s0 k4_s0 k16_s0
+    python src/compare.py --runs runs --glob 'k*_s0'
 """
 
 import argparse
 import glob as globmod
 import json
 import os
+import paths
 
 
 def read_run(run_dir):
@@ -120,7 +121,7 @@ def plot(runs, out_png):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", default="/data/ryan.kim/registers_runs")
+    ap.add_argument("--runs", default=paths.RUNS)
     ap.add_argument("--names", nargs="*", default=None)
     ap.add_argument("--glob", default=None)
     ap.add_argument("--png", default=None)

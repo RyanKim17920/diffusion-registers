@@ -2,8 +2,8 @@
 # Run src/analyze.py over every run that has a checkpoint, K=0 included --
 # the K=0 token-norm profile is the baseline the register models are judged against.
 set -uo pipefail
-REPO=/admin/home/ryan.kim/registers
-RUNS=${1:-/data/ryan.kim/registers_runs}
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+RUNS="${1:-${REG_RUNS:-$REPO/runs}}"
 N_SOLVE=${2:-5000}
 export PYTHONPATH="$REPO/src"
 for d in "$RUNS"/phase1_k*_s*; do

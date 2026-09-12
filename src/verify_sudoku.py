@@ -4,7 +4,7 @@ Deliberately shares no code with src/gen_sudoku.py -- the solution counter
 here is written from scratch (bitmask backtracking) so that a bug in the
 generator's solver cannot be masked by reusing it.
 
-    python src/verify_sudoku.py --data /data/ryan.kim/registers_data
+    python src/verify_sudoku.py --data data/sudoku
 """
 
 import argparse
@@ -12,6 +12,7 @@ import json
 import os
 
 import numpy as np
+import paths
 
 ROWS = np.arange(81) // 9
 COLS = np.arange(81) % 9
@@ -104,7 +105,7 @@ def count_solutions(puzzle, limit=2):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default="/data/ryan.kim/registers_data")
+    ap.add_argument("--data", default=paths.SUDOKU_DATA)
     ap.add_argument("--min_clues", type=int, default=24)
     ap.add_argument("--max_clues", type=int, default=45)
     ap.add_argument("--uniq_per_split", type=int, default=100)

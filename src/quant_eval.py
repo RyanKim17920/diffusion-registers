@@ -18,7 +18,7 @@ Reported as validation denoising CE at full precision vs quantized, and the
 degradation between them. The degradation is the number that matters -- a
 register model could be worse in absolute CE yet degrade far less.
 
-    python src/quant_eval.py --run /data/ryan.kim/registers_runs/text_k16_s0 \
+    python src/quant_eval.py --run runs/text_k16_s0 \
         --w_bits 8 --a_bits 8
 """
 
@@ -33,6 +33,7 @@ import torch.nn.functional as F
 
 from model import ModelConfig, RegisterDiffusionTransformer
 from text_train import VAL_EVAL_SEED, make_batch, mask_id_of
+import paths
 
 
 def quantize_per_tensor(x, scale, bits):
@@ -161,7 +162,7 @@ def val_ce(model, stream, seq_len, bs, batches, device, calibrate=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
-    ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
+    ap.add_argument("--data", default=paths.TEXT_DATA)
     # W8A8 is too easy to separate anything: the dLLM PTQ literature
     # (arXiv 2508.14896) reports that dLLMs break at W4A4, where SmoothQuant
     # falls to near-zero. The interesting operating points are the low-bit

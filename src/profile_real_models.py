@@ -28,6 +28,7 @@ import os
 
 import numpy as np
 import torch
+import paths
 
 
 def layer_stats(h, mult=3.0):
@@ -223,8 +224,8 @@ def main():
                          "some checkpoints (e.g. mdlm-owt) ship a config the "
                          "fast tokenizer cannot instantiate but are plain "
                          "GPT-2 BPE underneath")
-    ap.add_argument("--data", default="/data/ryan.kim/registers_text_data")
-    ap.add_argument("--out", default="/data/ryan.kim/registers_runs/real_models")
+    ap.add_argument("--data", default=paths.TEXT_DATA)
+    ap.add_argument("--out", default=os.path.join(paths.RUNS, "real_models"))
     ap.add_argument("--channels", action="store_true",
                     help="per-input-channel outlier stats (comparable to "
                          "src/channel_outliers.py on our own runs)")
@@ -232,7 +233,7 @@ def main():
                     help="also measure W8A8 / W8A6 PTQ degradation")
     args = ap.parse_args()
 
-    os.environ.setdefault("HF_HOME", "/data/huggingface")
+    
     from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

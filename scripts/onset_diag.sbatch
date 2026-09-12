@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=onset
-#SBATCH --partition=c
+#SBATCH --partition=cpu        # cluster-specific; edit or pass --partition to sbatch
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=160G
 #SBATCH --time=3:00:00
-#SBATCH --output=/data/ryan.kim/registers_runs/onset_%j.out
+#SBATCH --output=runs/onset_%j.out
 set -uo pipefail
-REPO=/admin/home/ryan.kim/registers
-export HF_HOME=/data/huggingface PYTHONPATH="$REPO/src" OMP_NUM_THREADS=64
+REPO="${REG_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}" PYTHONPATH="$REPO/src" OMP_NUM_THREADS=64
 P="$REPO/.venv/bin/python $REPO/src/profile_real_models.py --channels --n_seq 8 --batch 2 --seq_len 512 --dtype float32"
 # Is our 4.13x channel max/median about SIZE or about TRAINING TOKENS?
 # GPT-2 is the known-positive control: the massive-activations literature
