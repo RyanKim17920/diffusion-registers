@@ -109,7 +109,15 @@ def block_solve(model, puzzles, device, block_size, reg_mode="normal",
     Blocks are generated in order. Within a block the highest-confidence
     masked cell OF THAT BLOCK is revealed each step, and the register state is
     carried across the block's steps, then reset at the block boundary.
+
+    reg_mode 'no_carry' is the ablation that matters for this design: the
+    registers are re-initialised from the learned embeddings at EVERY step
+    instead of being carried, which severs the only channel that makes them a
+    scratchpad while leaving their content and the model untouched. If
+    'no_carry' costs nothing, the model never learned to use the carry.
     """
+    carry = reg_mode != "no_carry"
+    fwd_mode = "normal" if reg_mode == "no_carry" else reg_mode
     model.eval()
     nb = n_blocks_for(block_size)
     outs = []
@@ -125,9 +133,10 @@ def block_solve(model, puzzles, device, block_size, reg_mode="normal",
             for _ in range(block_size):
                 with torch.autocast("cuda", dtype=amp_dtype,
                                     enabled=device.type == "cuda"):
-                    out = model(build_tokens(p, sol), reg_mode=reg_mode,
+                    out = model(build_tokens(p, sol), reg_mode=fwd_mode,
                                 reg_state=reg_state, return_reg_state=True)
-                logits, reg_state = out
+                logits, new_state = out
+                reg_state = new_state if carry else None
                 probs = logits.float().softmax(-1)
                 conf, digit = probs.max(-1)
                 # only cells of the current block are eligible
