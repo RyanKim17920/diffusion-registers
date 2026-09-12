@@ -217,6 +217,37 @@ def aggregate(runs, hard_max_clues=27):
                        else ("BETTER" if d_ex > 0 else "WORSE"))
             print(f"  K={k:<3} val CE {d_ce:+.4f}   test exact {d_ex:+.4f}   "
                   f"(seed sd {noise:.4f}) -> {verdict}")
+
+        # Paired comparison. Arms sharing a seed see identical data order and
+        # identical masks/block plans, so the per-seed difference cancels the
+        # run-to-run variation that dominates the unpaired sd above. This is
+        # the sensitive test; the unpaired table is the conservative one.
+        bseed = {r["config"]["seed"]: r for r in by_k[0]}
+        print("\nPaired by seed (same data order and plans; K vs K=0 on that seed):")
+        print(f"{'K':>4}  {'n':>2}  {'mean d(test exact)':>19}  "
+              f"{'mean d(val CE)':>15}   per-seed deltas")
+        for k in sorted(by_k):
+            if k == 0:
+                continue
+            dex, dce, detail = [], [], []
+            for r in sorted(by_k[k], key=lambda r: r["config"]["seed"]):
+                sd_ = r["config"]["seed"]
+                if sd_ not in bseed:
+                    continue
+                b = bseed[sd_]["final"]
+                d1 = r["final"]["test"]["exact_solve_acc"] - b["test"]["exact_solve_acc"]
+                dex.append(d1)
+                dce.append(r["final"]["val_ce"] - b["val_ce"])
+                detail.append(f"s{sd_}:{d1:+.4f}")
+            if not dex:
+                continue
+            m_ex, s_ex = ms(dex)
+            m_ce, _ = ms(dce)
+            # does the paired mean clear its own standard error?
+            se = (s_ex / (len(dex) ** 0.5)) if len(dex) > 1 else float("inf")
+            mark = "" if se == 0 or abs(m_ex) <= 2 * se else "  <- 2se"
+            print(f"{k:>4}  {len(dex):>2}  {m_ex:>+12.4f} +/-{s_ex:>6.4f}  "
+                  f"{m_ce:>+15.4f}   {' '.join(detail)}{mark}")
     return out
 
 if __name__ == "__main__":
